@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from threading import Lock
 import pytz
+from typing import Dict
 
 from requests.exceptions import SSLError
 
@@ -85,8 +86,8 @@ class Security(Enum):
     SIGNED = 1
     API_KEY = 2
 
-
-symbol_name_map = {}
+# 合约数据全局缓存字典
+symbol_contract_map: Dict[str, ContractData] = {}
 
 
 class BinanceGateway(BaseGateway):
@@ -486,7 +487,7 @@ class BinanceRestApi(RestClient):
             )
             self.gateway.on_contract(contract)
 
-            symbol_name_map[contract.symbol] = contract.name
+            symbol_contract_map[contract.symbol] = contract
 
         self.gateway.write_log("合约信息查询成功")
 
@@ -714,14 +715,14 @@ class BinanceDataWebsocketApi(WebsocketClient):
 
     def subscribe(self, req: SubscribeRequest):
         """"""
-        if req.symbol not in symbol_name_map:
+        if req.symbol not in symbol_contract_map:
             self.gateway.write_log(f"找不到该合约代码{req.symbol}")
             return
 
         # Create tick buf data
         tick = TickData(
             symbol=req.symbol,
-            name=symbol_name_map.get(req.symbol, ""),
+            name=symbol_contract_map[req.symbol].name,
             exchange=Exchange.BINANCE,
             datetime=datetime.now(CHINA_TZ),
             gateway_name=self.gateway_name,
