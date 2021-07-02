@@ -47,6 +47,13 @@ REST_HOST = "https://www.binance.com"
 WEBSOCKET_TRADE_HOST = "wss://stream.binance.com:9443/ws/"
 WEBSOCKET_DATA_HOST = "wss://stream.binance.com:9443/stream?streams="
 
+# 模拟盘REST API地址
+TESTNET_REST_HOST = "https://testnet.binance.vision/api"
+
+# 模拟盘Websocket API地址
+TESTNET_WEBSOCKET_TRADE_HOST = "wss://testnet.binance.vision/ws"
+TESTNET_WEBSOCKET_DATA_HOST = "wss://testnet.binance.vision/stream?streams="
+
 STATUS_BINANCE2VT = {
     "NEW": Status.NOTTRADED,
     "PARTIALLY_FILLED": Status.PARTTRADED,
@@ -102,6 +109,7 @@ class BinanceGateway(BaseGateway):
         "session_number": 3,
         "proxy_host": "",
         "proxy_port": 0,
+        "server": ["TESTNET", "REAL"]
     }
 
     exchanges = [Exchange.BINANCE]
@@ -121,10 +129,11 @@ class BinanceGateway(BaseGateway):
         session_number = setting["session_number"]
         proxy_host = setting["proxy_host"]
         proxy_port = setting["proxy_port"]
+        server = setting["server"]
 
         self.rest_api.connect(key, secret, session_number,
-                              proxy_host, proxy_port)
-        self.market_ws_api.connect(proxy_host, proxy_port)
+                              proxy_host, proxy_port, server)
+        self.market_ws_api.connect(proxy_host, proxy_port, server)
 
         self.event_engine.register(EVENT_TIMER, self.process_timer_event)
 
@@ -244,7 +253,8 @@ class BinanceRestApi(RestClient):
         secret: str,
         session_number: int,
         proxy_host: str,
-        proxy_port: int
+        proxy_port: int,
+        server: str
     ):
         """
         Initialize connection to REST server.
@@ -253,12 +263,17 @@ class BinanceRestApi(RestClient):
         self.secret = secret.encode()
         self.proxy_port = proxy_port
         self.proxy_host = proxy_host
+        self.server = server
 
         self.connect_time = (
             int(datetime.now(CHINA_TZ).strftime("%y%m%d%H%M%S")) * self.order_count
         )
 
-        self.init(REST_HOST, proxy_host, proxy_port)
+        if self.server == "REAL":
+            self.init(REST_HOST, proxy_host, proxy_port)
+        else:
+            self.init(TESTNET_REST_HOST, proxy_host, proxy_port)
+
         self.start(session_number)
 
         self.gateway.write_log("REST API启动成功")
@@ -529,7 +544,11 @@ class BinanceRestApi(RestClient):
         """"""
         self.user_stream_key = data["listenKey"]
         self.keep_alive_count = 0
-        url = WEBSOCKET_TRADE_HOST + self.user_stream_key
+
+        if self.server == "REAL":
+            url = WEBSOCKET_TRADE_HOST + self.user_stream_key
+        else:
+            url = TESTNET_WEBSOCKET_TRADE_HOST + self.user_stream_key
 
         self.trade_ws_api.connect(url, self.proxy_host, self.proxy_port)
 
@@ -710,10 +729,11 @@ class BinanceDataWebsocketApi(WebsocketClient):
 
         self.ticks = {}
 
-    def connect(self, proxy_host: str, proxy_port: int):
+    def connect(self, proxy_host: str, proxy_port: int, server: str):
         """"""
         self.proxy_host = proxy_host
         self.proxy_port = proxy_port
+        self.server = server
 
     def on_connected(self):
         """"""
@@ -746,7 +766,11 @@ class BinanceDataWebsocketApi(WebsocketClient):
             channels.append(ws_symbol + "@ticker")
             channels.append(ws_symbol + "@depth5")
 
-        url = WEBSOCKET_DATA_HOST + "/".join(channels)
+        if self.server == "REAL":
+            url = WEBSOCKET_DATA_HOST + "/".join(channels)
+        else:
+            url = TESTNET_WEBSOCKET_DATA_HOST + "/".join(channels)
+
         self.init(url, self.proxy_host, self.proxy_port)
         self.start()
 
