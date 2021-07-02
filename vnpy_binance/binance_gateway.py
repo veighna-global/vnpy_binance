@@ -12,6 +12,7 @@ from enum import Enum
 from threading import Lock
 import pytz
 from typing import Dict
+from vnpy.trader.utility import round_to
 
 from requests.exceptions import SSLError
 
@@ -673,8 +674,13 @@ class BinanceTradeWebsocketApi(WebsocketClient):
 
         self.gateway.on_order(order)
 
-        # Push trade event
+        # Round trade volume to minimum trading volume
         trade_volume = float(packet["l"])
+
+        contract = symbol_contract_map.get(order.symbol, None)
+        if contract:
+            trade_volume = round_to(trade_volume, contract.min_volume)
+
         if not trade_volume:
             return
 
