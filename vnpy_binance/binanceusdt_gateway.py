@@ -692,7 +692,12 @@ class BinanceUsdtRestApi(RestClient):
 
             # 如果请求失败则终止循环
             if resp.status_code // 100 != 2:
-                msg: str = f"获取历史数据失败，状态码：{resp.status_code}，信息：{resp.text}"
+                data: dict = resp.json()
+                if data["msg"]:
+                    m = data["msg"]
+                else:
+                    m = "无"
+                msg: str = f"获取历史数据失败，状态码：{resp.status_code}，信息：{m}"
                 self.gateway.write_log(msg)
                 break
             else:
