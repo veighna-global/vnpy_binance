@@ -56,10 +56,10 @@ WEBSOCKET_TRADE_HOST: str = "wss://stream.binance.com:9443/ws/"
 WEBSOCKET_DATA_HOST: str = "wss://stream.binance.com:9443/stream?streams="
 
 # 模拟盘REST API地址
-TESTNET_REST_HOST: str = "https://testnet.binance.vision/api"
+TESTNET_REST_HOST: str = "https://testnet.binance.vision"
 
 # 模拟盘Websocket API地址
-TESTNET_WEBSOCKET_TRADE_HOST: str = "wss://testnet.binance.vision/ws"
+TESTNET_WEBSOCKET_TRADE_HOST: str = "wss://testnet.binance.vision/ws/"
 TESTNET_WEBSOCKET_DATA_HOST: str = "wss://testnet.binance.vision/stream?streams="
 
 # 委托状态映射
@@ -130,9 +130,9 @@ class BinanceGateway(BaseGateway):
         """构造函数"""
         super().__init__(event_engine, gateway_name)
 
-        self.rest_api: "BinanceRestApi" = BinanceRestApi(self)
         self.trade_ws_api: "BinanceTradeWebsocketApi" = BinanceTradeWebsocketApi(self)
         self.market_ws_api: "BinanceDataWebsocketApi" = BinanceDataWebsocketApi(self)
+        self.rest_api: "BinanceRestApi" = BinanceRestApi(self)
 
     def connect(self, setting: dict):
         """连接交易接口"""
@@ -295,7 +295,7 @@ class BinanceRestApi(RestClient):
         data: dict = {
             "security": Security.NONE
         }
-        path: str = "/api/v1/time"
+        path: str = "/api/v3/time"
 
         return self.add_request(
             "GET",
@@ -333,7 +333,7 @@ class BinanceRestApi(RestClient):
         }
         self.add_request(
             method="GET",
-            path="/api/v1/exchangeInfo",
+            path="/api/v3/exchangeInfo",
             callback=self.on_query_contract,
             data=data
         )
@@ -415,7 +415,7 @@ class BinanceRestApi(RestClient):
 
         self.add_request(
             method="POST",
-            path="/api/v1/userDataStream",
+            path="/api/v3/userDataStream",
             callback=self.on_start_user_stream,
             data=data
         )
@@ -437,7 +437,7 @@ class BinanceRestApi(RestClient):
 
         self.add_request(
             method="PUT",
-            path="/api/v1/userDataStream",
+            path="/api/v3/userDataStream",
             callback=self.on_keep_user_stream,
             params=params,
             data=data
@@ -582,7 +582,7 @@ class BinanceRestApi(RestClient):
 
             resp: Response = self.request(
                 "GET",
-                "/api/v1/klines",
+                "/api/v3/klines",
                 data={"security": Security.NONE},
                 params=params
             )
@@ -793,13 +793,13 @@ class BinanceDataWebsocketApi(WebsocketClient):
             tick.datetime = generate_datetime(float(data['E']))
         else:
             bids: list = data["bids"]
-            for n in range(5):
+            for n in range(min(5, len(bids))):
                 price, volume = bids[n]
                 tick.__setattr__("bid_price_" + str(n + 1), float(price))
                 tick.__setattr__("bid_volume_" + str(n + 1), float(volume))
 
             asks: list = data["asks"]
-            for n in range(5):
+            for n in range(min(5, len(asks))):
                 price, volume = asks[n]
                 tick.__setattr__("ask_price_" + str(n + 1), float(price))
                 tick.__setattr__("ask_volume_" + str(n + 1), float(volume))
