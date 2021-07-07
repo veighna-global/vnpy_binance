@@ -137,9 +137,9 @@ class BinanceInverseGateway(BaseGateway):
         """构造函数"""
         super().__init__(event_engine, gateway_name)
 
-        self.rest_api: "BinanceInverseRestApi" = BinanceInverseRestApi(self)
         self.trade_ws_api: "BinanceInverseTradeWebsocketApi" = BinanceInverseTradeWebsocketApi(self)
         self.market_ws_api: "BinanceInverseDataWebsocketApi" = BinanceInverseDataWebsocketApi(self)
+        self.rest_api: "BinanceInverseRestApi" = BinanceInverseRestApi(self)
 
         self.orders: Dict[str, OrderData] = {}
 
@@ -855,6 +855,7 @@ class BinanceInverseDataWebsocketApi(WebsocketClient):
         self.gateway: BinanceInverseGateway = gateway
         self.gateway_name: str = gateway.gateway_name
 
+        self.subscribed: Dict[str, SubscribeRequest] = {}
         self.ticks: Dict[str, TickData] = {}
 
     def connect(
@@ -872,11 +873,17 @@ class BinanceInverseDataWebsocketApi(WebsocketClient):
         """连接成功回报"""
         self.gateway.write_log("行情Websocket API连接刷新")
 
+        for req in list(self.subscribed.values()):
+            self.subscribe(req)
+
     def subscribe(self, req: SubscribeRequest) -> None:
         """订阅行情"""
         if req.symbol not in symbol_contract_map:
             self.gateway.write_log(f"找不到该合约代码{req.symbol}")
             return
+
+        # 缓存订阅记录
+        self.subscribed[req.vt_symbol] = req
 
         # 创建TICK对象
         tick: TickData = TickData(
