@@ -582,7 +582,7 @@ class BinanceRestApi(RestClient):
 
             resp: Response = self.request(
                 "GET",
-                "/api/v3/klines",
+                "/api/v1/klines",
                 data={"security": Security.NONE},
                 params=params
             )
