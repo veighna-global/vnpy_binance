@@ -729,6 +729,7 @@ class BinanceDataWebsocketApi(WebsocketClient):
         self.gateway: BinanceGateway = gateway
         self.gateway_name: str = gateway.gateway_name
 
+        self.subscribed: Dict[str, SubscribeRequest] = {}
         self.ticks: Dict[str, TickData] = {}
 
     def connect(self, proxy_host: str, proxy_port: int, server: str):
@@ -741,11 +742,17 @@ class BinanceDataWebsocketApi(WebsocketClient):
         """连接成功回报"""
         self.gateway.write_log("行情Websocket API连接刷新")
 
+        for req in list(self.subscribed.values()):
+            self.subscribe(req)
+
     def subscribe(self, req: SubscribeRequest) -> None:
         """订阅行情"""
         if req.symbol not in symbol_contract_map:
             self.gateway.write_log(f"找不到该合约代码{req.symbol}")
             return
+
+        # 缓存订阅记录
+        self.subscribed[req.vt_symbol] = req
 
         # 创建TICK对象
         tick: TickData = TickData(
