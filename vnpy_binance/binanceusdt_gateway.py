@@ -9,7 +9,7 @@ import hashlib
 import hmac
 import time
 from copy import copy
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from enum import Enum
 from threading import Lock
 from typing import Dict, List, Tuple
@@ -136,9 +136,9 @@ class BinanceUsdtGateway(BaseGateway):
         """构造函数"""
         super().__init__(event_engine, gateway_name)
 
-        self.rest_api: "BinanceUsdtRestApi" = BinanceUsdtRestApi(self)
         self.trade_ws_api: "BinanceUsdtTradeWebsocketApi" = BinanceUsdtTradeWebsocketApi(self)
         self.market_ws_api: "BinanceUsdtDataWebsocketApi" = BinanceUsdtDataWebsocketApi(self)
+        self.rest_api: "BinanceUsdtRestApi" = BinanceUsdtRestApi(self)
 
         self.orders: Dict[str, OrderData] = {}
 
@@ -853,6 +853,7 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
         self.gateway: BinanceUsdtGateway = gateway
         self.gateway_name: str = gateway.gateway_name
 
+        self.subscribed: Dict[str, SubscribeRequest] = {}
         self.ticks: Dict[str, TickData] = {}
 
     def connect(
@@ -870,11 +871,17 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
         """连接成功回报"""
         self.gateway.write_log("行情Websocket API连接刷新")
 
+        for req in list(self.subscribed.values()):
+            self.subscribe(req)
+
     def subscribe(self, req: SubscribeRequest) -> None:
         """订阅行情"""
         if req.symbol not in symbol_contract_map:
             self.gateway.write_log(f"找不到该合约代码{req.symbol}")
             return
+
+        # 缓存订阅记录
+        self.subscribed[req.vt_symbol] = req
 
         # 创建TICK对象
         tick: TickData = TickData(
