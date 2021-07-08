@@ -239,7 +239,7 @@ class BinanceUsdtRestApi(RestClient):
             path: str = request.path
 
         if security == Security.SIGNED:
-            timestamp: str = int(time.time() * 1000)
+            timestamp: int = int(time.time() * 1000)
 
             if self.time_offset > 0:
                 timestamp -= abs(self.time_offset)
