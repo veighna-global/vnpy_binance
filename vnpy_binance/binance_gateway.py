@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from threading import Lock
 import pytz
-from typing import Dict, List
+from typing import Any, Dict, List
 from vnpy.trader.utility import round_to
 
 from requests.exceptions import SSLError
@@ -115,7 +115,7 @@ class BinanceGateway(BaseGateway):
     vn.py用于对接币安现货账户的交易接口。
     """
 
-    default_setting = {
+    default_setting: Dict[str, Any] = {
         "key": "",
         "secret": "",
         "session_number": 3,

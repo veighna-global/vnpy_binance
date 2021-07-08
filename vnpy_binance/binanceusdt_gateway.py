@@ -12,7 +12,7 @@ from copy import copy
 from datetime import date, datetime, timedelta
 from enum import Enum
 from threading import Lock
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 from vnpy.trader.utility import round_to
 import pytz
 
@@ -121,7 +121,7 @@ class BinanceUsdtGateway(BaseGateway):
     vn.py用于对接币安永续账户的交易接口。
     """
 
-    default_setting = {
+    default_setting: Dict[str, Any] = {
         "key": "",
         "secret": "",
         "会话数": 3,
