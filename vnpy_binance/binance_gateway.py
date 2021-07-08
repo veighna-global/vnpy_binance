@@ -134,6 +134,8 @@ class BinanceGateway(BaseGateway):
         self.market_ws_api: "BinanceDataWebsocketApi" = BinanceDataWebsocketApi(self)
         self.rest_api: "BinanceRestApi" = BinanceRestApi(self)
 
+        self.orders: Dict[str, OrderData] = {}
+
     def connect(self, setting: dict):
         """连接交易接口"""
         key: str = setting["key"]
@@ -182,6 +184,15 @@ class BinanceGateway(BaseGateway):
     def process_timer_event(self, event: Event) -> None:
         """定时事件处理"""
         self.rest_api.keep_user_stream()
+
+    def on_order(self, order: OrderData) -> None:
+        """推送委托数据"""
+        self.orders[order.orderid] = copy(order)
+        super().on_order(order)
+
+    def get_order(self, orderid: str) -> OrderData:
+        """查询委托数据"""
+        return self.orders.get(orderid, None)
 
 
 class BinanceRestApi(RestClient):
@@ -398,13 +409,16 @@ class BinanceRestApi(RestClient):
             "origClientOrderId": req.orderid
         }
 
+        order: OrderData = self.gateway.get_order(req.orderid)
+
         self.add_request(
             method="DELETE",
             path="/api/v3/order",
             callback=self.on_cancel_order,
             params=params,
             data=data,
-            extra=req
+            on_failed=self.on_cancel_failed,
+            extra=order
         )
 
     def start_user_stream(self) -> Request:
@@ -440,7 +454,8 @@ class BinanceRestApi(RestClient):
             path="/api/v3/userDataStream",
             callback=self.on_keep_user_stream,
             params=params,
-            data=data
+            data=data,
+            on_error=self.on_keep_user_stream_error
         )
 
     def on_query_time(self, data: dict, request: Request) -> None:
@@ -545,6 +560,16 @@ class BinanceRestApi(RestClient):
         """委托撤单回报"""
         pass
 
+    def on_cancel_failed(self, status_code: str, request: Request) -> None:
+        """撤单回报函数报错回报"""
+        if request.extra:
+            order = request.extra
+            order.status = Status.REJECTED
+            self.gateway.on_order(order)
+
+        msg = f"撤单失败，状态码：{status_code}，信息：{request.response.text}"
+        self.gateway.write_log(msg)
+
     def on_start_user_stream(self, data: dict, request: Request) -> None:
         """生成listenKey回报"""
         self.user_stream_key = data["listenKey"]
@@ -560,6 +585,14 @@ class BinanceRestApi(RestClient):
     def on_keep_user_stream(self, data: dict, request: Request) -> None:
         """延长listenKey有效期回报"""
         pass
+
+    def on_keep_user_stream_error(
+        self, exception_type: type, exception_value: Exception, tb, request: Request
+    ) -> None:
+        """延长listenKey有效期函数报错回报"""
+        # 当延长listenKey有效期时，忽略超时报错
+        if not issubclass(exception_type, TimeoutError):
+            self.on_error(exception_type, exception_value, tb, request)
 
     def query_history(self, req: HistoryRequest) -> List[BarData]:
         """查询历史数据"""
