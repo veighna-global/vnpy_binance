@@ -9,7 +9,7 @@ import hashlib
 import hmac
 import time
 from copy import copy
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from enum import Enum
 from threading import Lock
 from typing import Any, Dict, List, Tuple
