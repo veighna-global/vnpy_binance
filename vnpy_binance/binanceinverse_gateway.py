@@ -882,6 +882,9 @@ class BinanceInverseDataWebsocketApi(WebsocketClient):
 
     def subscribe(self, req: SubscribeRequest) -> None:
         """订阅行情"""
+        if req.vt_symbol in self.subscribed:
+            return
+
         if req.symbol not in symbol_contract_map:
             self.gateway.write_log(f"找不到该合约代码{req.symbol}")
             return
