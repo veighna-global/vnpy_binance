@@ -885,6 +885,9 @@ class BinanceInverseDataWebsocketApi(WebsocketClient):
         if req.symbol not in symbol_contract_map:
             self.gateway.write_log(f"找不到该合约代码{req.symbol}")
             return
+    
+        if req.vt_symbol in self.subscribed:
+            return
 
         # 缓存订阅记录
         self.subscribed[req.vt_symbol] = req
