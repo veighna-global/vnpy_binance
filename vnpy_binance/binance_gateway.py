@@ -49,7 +49,7 @@ from vnpy_rest.rest_client import Response
 CHINA_TZ = pytz.timezone("Asia/Shanghai")
 
 # 实盘REST API地址
-REST_HOST: str = "https://www.binance.com"
+REST_HOST: str = "https://api.binance.com"
 
 # 实盘Websocket API地址
 WEBSOCKET_TRADE_HOST: str = "wss://stream.binance.com:9443/ws/"
