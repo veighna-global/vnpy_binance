@@ -691,12 +691,7 @@ class BinanceInverseRestApi(RestClient):
 
             # 如果请求失败则终止循环
             if resp.status_code // 100 != 2:
-                data: dict = resp.json()
-                if data["msg"]:
-                    m = data["msg"]
-                else:
-                    m = "无"
-                msg: str = f"获取历史数据失败，状态码：{resp.status_code}，信息：{m}"
+                msg: str = f"获取历史数据失败，状态码：{resp.status_code}，信息：{resp.text}"
                 self.gateway.write_log(msg)
                 break
             else:
@@ -935,7 +930,7 @@ class BinanceInverseDataWebsocketApi(WebsocketClient):
             tick.high_price = float(data['h'])
             tick.low_price = float(data['l'])
             tick.last_price = float(data['c'])
-            tick.datetime = datetime.fromtimestamp(float(data['E']) / 1000)
+            tick.datetime = generate_datetime(float(data['E']))
         else:
             bids: list = data["b"]
             for n in range(min(5, len(bids))):
