@@ -132,7 +132,7 @@ class BinanceInverseGateway(BaseGateway):
 
     exchanges: Exchange = [Exchange.BINANCE]
 
-    def __init__(self, event_engine: EventEngine, gateway_name: str = "BINANCEINVERSE") -> None:
+    def __init__(self, event_engine: EventEngine, gateway_name: str = "BINANCE_INVERSE") -> None:
         """构造函数"""
         super().__init__(event_engine, gateway_name)
 

@@ -1,8 +1,3 @@
-"""
-1. 只支持全仓模式
-2. 只支持单向持仓模式
-"""
-
 import urllib
 import hashlib
 import hmac
@@ -125,13 +120,13 @@ class BinanceSpotGateway(BaseGateway):
 
     exchanges: Exchange = [Exchange.BINANCE]
 
-    def __init__(self, event_engine: EventEngine, gateway_name: str = "BINANCE") -> None:
+    def __init__(self, event_engine: EventEngine, gateway_name: str = "BINANCE_SPOT") -> None:
         """构造函数"""
         super().__init__(event_engine, gateway_name)
 
-        self.trade_ws_api: "BinanceTradeWebsocketApi" = BinanceTradeWebsocketApi(self)
-        self.market_ws_api: "BinanceDataWebsocketApi" = BinanceDataWebsocketApi(self)
-        self.rest_api: "BinanceRestApi" = BinanceRestApi(self)
+        self.trade_ws_api: "BinanceSpotTradeWebsocketApi" = BinanceSpotTradeWebsocketApi(self)
+        self.market_ws_api: "BinanceSpotDataWebsocketApi" = BinanceSpotDataWebsocketApi(self)
+        self.rest_api: "BinanceSpotRestAPi" = BinanceSpotRestAPi(self)
 
         self.orders: Dict[str, OrderData] = {}
 
@@ -192,7 +187,7 @@ class BinanceSpotGateway(BaseGateway):
         return self.orders.get(orderid, None)
 
 
-class BinanceRestApi(RestClient):
+class BinanceSpotRestAPi(RestClient):
     """"""
 
     def __init__(self, gateway: BinanceSpotGateway) -> None:
@@ -202,7 +197,7 @@ class BinanceRestApi(RestClient):
         self.gateway: BinanceSpotGateway = gateway
         self.gateway_name: str = gateway.gateway_name
 
-        self.trade_ws_api: BinanceTradeWebsocketApi = self.gateway.trade_ws_api
+        self.trade_ws_api: BinanceSpotTradeWebsocketApi = self.gateway.trade_ws_api
 
         self.key: str = ""
         self.secret: str = ""
@@ -663,7 +658,7 @@ class BinanceRestApi(RestClient):
         return history
 
 
-class BinanceTradeWebsocketApi(WebsocketClient):
+class BinanceSpotTradeWebsocketApi(WebsocketClient):
     """"""
 
     def __init__(self, gateway: BinanceSpotGateway) -> None:
@@ -748,7 +743,7 @@ class BinanceTradeWebsocketApi(WebsocketClient):
         self.gateway.on_trade(trade)
 
 
-class BinanceDataWebsocketApi(WebsocketClient):
+class BinanceSpotDataWebsocketApi(WebsocketClient):
     """"""
 
     def __init__(self, gateway: BinanceSpotGateway) -> None:
