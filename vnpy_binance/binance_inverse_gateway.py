@@ -703,17 +703,17 @@ class BinanceInverseRestApi(RestClient):
 
                 buf: List[BarData] = []
 
-                for l in data:
+                for row in data:
                     bar: BarData = BarData(
                         symbol=req.symbol,
                         exchange=req.exchange,
-                        datetime=generate_datetime(l[0]),
+                        datetime=generate_datetime(row[0]),
                         interval=req.interval,
-                        volume=float(l[5]),
-                        open_price=float(l[1]),
-                        high_price=float(l[2]),
-                        low_price=float(l[3]),
-                        close_price=float(l[4]),
+                        volume=float(row[5]),
+                        open_price=float(row[1]),
+                        high_price=float(row[2]),
+                        low_price=float(row[3]),
+                        close_price=float(row[4]),
                         gateway_name=self.gateway_name
                     )
                     buf.append(bar)
@@ -733,7 +733,6 @@ class BinanceInverseRestApi(RestClient):
                 # 更新结束时间
                 end_dt = begin - TIMEDELTA_MAP[req.interval]
                 end_time = int(datetime.timestamp(end_dt))
-
 
         history = list(reversed(history))
         return history
@@ -880,7 +879,7 @@ class BinanceInverseDataWebsocketApi(WebsocketClient):
         if req.symbol not in symbol_contract_map:
             self.gateway.write_log(f"找不到该合约代码{req.symbol}")
             return
-    
+
         if req.vt_symbol in self.subscribed:
             return
 

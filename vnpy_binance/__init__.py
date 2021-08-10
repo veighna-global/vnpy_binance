@@ -22,9 +22,12 @@
 
 import importlib_metadata
 
-from .binance_gateway import BinanceGateway
-from .binanceusdt_gateway import BinanceUsdtGateway
-from .binanceinverse_gateway import BinanceInverseGateway
+from .binance_spot_gateway import BinanceSpotGateway
+from .binance_usdt_gateway import BinanceUsdtGateway
+from .binance_inverse_gateway import BinanceInverseGateway
 
 
-__version__ = importlib_metadata.version("vnpy_binance")
+try:
+    __version__ = importlib_metadata.version("vnpy_binance")
+except importlib_metadata.PackageNotFoundError:
+    __version__ = "dev"
