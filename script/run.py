@@ -2,9 +2,11 @@ from vnpy.event import EventEngine
 from vnpy.trader.engine import MainEngine
 from vnpy.trader.ui import MainWindow, create_qapp
 
-from vnpy_binance import BinanceGateway
-from vnpy_binance import BinanceUsdtGateway
-from vnpy_binance import BinanceInverseGateway
+from vnpy_binance import (
+    BinanceSpotGateway,
+    BinanceUsdtGateway,
+    BinanceInverseGateway
+)
 
 
 def main():
@@ -13,7 +15,7 @@ def main():
 
     event_engine = EventEngine()
     main_engine = MainEngine(event_engine)
-    main_engine.add_gateway(BinanceGateway)
+    main_engine.add_gateway(BinanceSpotGateway)
     main_engine.add_gateway(BinanceUsdtGateway)
     main_engine.add_gateway(BinanceInverseGateway)
 

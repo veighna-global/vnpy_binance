@@ -124,7 +124,6 @@ class BinanceUsdtGateway(BaseGateway):
     default_setting: Dict[str, Any] = {
         "key": "",
         "secret": "",
-        "会话数": 3,
         "服务器": ["TESTNET", "REAL"],
         "代理地址": "",
         "代理端口": 0,
@@ -146,13 +145,11 @@ class BinanceUsdtGateway(BaseGateway):
         """连接交易接口"""
         key: str = setting["key"]
         secret: str = setting["secret"]
-        session_number: str = setting["会话数"]
         server: str = setting["服务器"]
         proxy_host: str = setting["代理地址"]
         proxy_port: str = setting["代理端口"]
 
-        self.rest_api.connect(key, secret, session_number, server,
-                              proxy_host, proxy_port)
+        self.rest_api.connect(key, secret, server, proxy_host, proxy_port)
         self.market_ws_api.connect(proxy_host, proxy_port, server)
 
         self.event_engine.register(EVENT_TIMER, self.process_timer_event)
@@ -276,7 +273,6 @@ class BinanceUsdtRestApi(RestClient):
         self,
         key: str,
         secret: str,
-        session_number: int,
         server: str,
         proxy_host: str,
         proxy_port: int
@@ -297,7 +293,7 @@ class BinanceUsdtRestApi(RestClient):
         else:
             self.init(F_TESTNET_REST_HOST, proxy_host, proxy_port)
 
-        self.start(session_number)
+        self.start()
 
         self.gateway.write_log("REST API启动成功")
 
