@@ -117,9 +117,7 @@ class Security(Enum):
 
 
 class BinanceInverseGateway(BaseGateway):
-    """
-    vn.py用于对接币安永续账户的交易接口。
-    """
+    """vn.py用于对接币安反向合约的交易接口"""
 
     default_setting: Dict[str, Any] = {
         "key": "",
@@ -199,7 +197,7 @@ class BinanceInverseGateway(BaseGateway):
 
 
 class BinanceInverseRestApi(RestClient):
-    """"""
+    """币安反向合约的REST API"""
 
     def __init__(self, gateway: BinanceInverseGateway) -> None:
         """构造函数"""
@@ -734,7 +732,7 @@ class BinanceInverseRestApi(RestClient):
 
 
 class BinanceInverseTradeWebsocketApi(WebsocketClient):
-    """"""
+    """币安反向合约的交易Websocket API"""
 
     def __init__(self, gateway: BinanceInverseGateway) -> None:
         """构造函数"""
@@ -839,7 +837,7 @@ class BinanceInverseTradeWebsocketApi(WebsocketClient):
 
 
 class BinanceInverseDataWebsocketApi(WebsocketClient):
-    """"""
+    """币安反向合约的行情Websocket API"""
 
     def __init__(self, gateway: BinanceInverseGateway) -> None:
         """构造函数"""
