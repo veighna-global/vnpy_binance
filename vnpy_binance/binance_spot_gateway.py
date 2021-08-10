@@ -34,10 +34,8 @@ from vnpy.trader.object import (
 )
 from vnpy.trader.event import EVENT_TIMER
 from vnpy.event import Event, EventEngine
-
-from vnpy_rest import Request, RestClient
+from vnpy_rest import RestClient, Request, Response
 from vnpy_websocket import WebsocketClient
-from vnpy_rest.rest_client import Response
 
 
 # 中国时区
@@ -113,9 +111,9 @@ class BinanceSpotGateway(BaseGateway):
     default_setting: Dict[str, Any] = {
         "key": "",
         "secret": "",
-        "proxy_host": "",
-        "proxy_port": 0,
-        "server": ["TESTNET", "REAL"]
+        "服务器": ["TESTNET", "REAL"],
+        "代理地址": "",
+        "代理端口": 0
     }
 
     exchanges: Exchange = [Exchange.BINANCE]
@@ -188,7 +186,7 @@ class BinanceSpotGateway(BaseGateway):
 
 
 class BinanceSpotRestAPi(RestClient):
-    """"""
+    """币安现货REST API"""
 
     def __init__(self, gateway: BinanceSpotGateway) -> None:
         """构造函数"""
@@ -349,7 +347,7 @@ class BinanceSpotRestAPi(RestClient):
     def send_order(self, req: OrderRequest) -> str:
         """委托下单"""
         # 生成本地委托号
-        orderid: str = "NKD8FYX4-" + str(self.connect_time + self._new_order_id())
+        orderid: str = str(self.connect_time + self._new_order_id())
 
         # 推送提交中事件
         order: OrderData = req.create_order_data(
@@ -659,7 +657,7 @@ class BinanceSpotRestAPi(RestClient):
 
 
 class BinanceSpotTradeWebsocketApi(WebsocketClient):
-    """"""
+    """币安现货交易Websocket API"""
 
     def __init__(self, gateway: BinanceSpotGateway) -> None:
         """构造函数"""
@@ -744,7 +742,7 @@ class BinanceSpotTradeWebsocketApi(WebsocketClient):
 
 
 class BinanceSpotDataWebsocketApi(WebsocketClient):
-    """"""
+    """币安现货行情Websocket API"""
 
     def __init__(self, gateway: BinanceSpotGateway) -> None:
         """构造函数"""

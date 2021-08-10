@@ -382,7 +382,7 @@ class BinanceUsdtRestApi(RestClient):
     def send_order(self, req: OrderRequest) -> str:
         """委托下单"""
         # 生成本地委托号
-        orderid: str = "328hhn6c-" + str(self.connect_time + self._new_order_id())
+        orderid: str = str(self.connect_time + self._new_order_id())
 
         # 推送提交中事件
         order: OrderData = req.create_order_data(
