@@ -111,7 +111,7 @@ class BinanceSpotGateway(BaseGateway):
     default_setting: Dict[str, Any] = {
         "key": "",
         "secret": "",
-        "服务器": ["TESTNET", "REAL"],
+        "服务器": ["REAL", "TESTNET"],
         "代理地址": "",
         "代理端口": 0
     }
@@ -132,9 +132,9 @@ class BinanceSpotGateway(BaseGateway):
         """连接交易接口"""
         key: str = setting["key"]
         secret: str = setting["secret"]
-        proxy_host: str = setting["proxy_host"]
-        proxy_port: str = setting["proxy_port"]
-        server: str = setting["server"]
+        proxy_host: str = setting["代理地址"]
+        proxy_port: str = setting["代理端口"]
+        server: str = setting["服务器"]
 
         self.rest_api.connect(key, secret, proxy_host, proxy_port, server)
         self.market_ws_api.connect(proxy_host, proxy_port, server)

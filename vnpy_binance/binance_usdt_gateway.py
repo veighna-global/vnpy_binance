@@ -118,13 +118,13 @@ class Security(Enum):
 
 class BinanceUsdtGateway(BaseGateway):
     """
-    vn.py用于对接币安永续账户的交易接口。
+    vn.py用于对接币安正向合约的交易接口。
     """
 
     default_setting: Dict[str, Any] = {
         "key": "",
         "secret": "",
-        "服务器": ["TESTNET", "REAL"],
+        "服务器": ["REAL", "TESTNET"],
         "代理地址": "",
         "代理端口": 0,
     }
@@ -199,7 +199,7 @@ class BinanceUsdtGateway(BaseGateway):
 
 
 class BinanceUsdtRestApi(RestClient):
-    """"""
+    """币安正向合约的REST API"""
 
     def __init__(self, gateway: BinanceUsdtGateway) -> None:
         """构造函数"""
@@ -734,7 +734,7 @@ class BinanceUsdtRestApi(RestClient):
 
 
 class BinanceUsdtTradeWebsocketApi(WebsocketClient):
-    """"""
+    """币安正向合约的交易Websocket API"""
 
     def __init__(self, gateway: BinanceUsdtGateway) -> None:
         """构造函数"""
@@ -839,7 +839,7 @@ class BinanceUsdtTradeWebsocketApi(WebsocketClient):
 
 
 class BinanceUsdtDataWebsocketApi(WebsocketClient):
-    """"""
+    """币安正向合约的行情Websocket API"""
 
     def __init__(self, gateway: BinanceUsdtGateway) -> None:
         """构造函数"""

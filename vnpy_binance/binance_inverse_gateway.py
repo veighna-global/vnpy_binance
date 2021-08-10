@@ -4,7 +4,6 @@
 3. 只支持反向合约
 """
 
-
 import urllib
 import hashlib
 import hmac
@@ -125,7 +124,7 @@ class BinanceInverseGateway(BaseGateway):
     default_setting: Dict[str, Any] = {
         "key": "",
         "secret": "",
-        "服务器": ["TESTNET", "REAL"],
+        "服务器": ["REAL", "TESTNET"],
         "代理地址": "",
         "代理端口": 0,
     }
