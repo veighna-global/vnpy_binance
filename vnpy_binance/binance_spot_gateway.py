@@ -366,7 +366,7 @@ class BinanceSpotRestAPi(RestClient):
             "side": DIRECTION_VT2BINANCE[req.direction],
             "type": ORDERTYPE_VT2BINANCE[req.type],
             "price": str(req.price),
-            "quantity": str(req.volume),
+            "quantity": f"{req.volume:2f}",
             "newClientOrderId": orderid,
             "newOrderRespType": "ACK"
         }
