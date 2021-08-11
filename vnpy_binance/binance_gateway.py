@@ -377,7 +377,7 @@ class BinanceRestApi(RestClient):
             "side": DIRECTION_VT2BINANCE[req.direction],
             "type": ORDERTYPE_VT2BINANCE[req.type],
             "price": str(req.price),
-            "quantity": f"{req.volume:2f}",
+            "quantity": str(req.volume),
             "newClientOrderId": orderid,
             "newOrderRespType": "ACK"
         }
