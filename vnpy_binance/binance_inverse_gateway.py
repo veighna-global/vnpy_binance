@@ -4,7 +4,6 @@
 3. 只支持反向合约
 """
 
-
 import urllib
 import hashlib
 import hmac
@@ -118,22 +117,19 @@ class Security(Enum):
 
 
 class BinanceInverseGateway(BaseGateway):
-    """
-    vn.py用于对接币安永续账户的交易接口。
-    """
+    """vn.py用于对接币安反向合约的交易接口"""
 
     default_setting: Dict[str, Any] = {
         "key": "",
         "secret": "",
-        "会话数": 3,
-        "服务器": ["TESTNET", "REAL"],
+        "服务器": ["REAL", "TESTNET"],
         "代理地址": "",
         "代理端口": 0,
     }
 
     exchanges: Exchange = [Exchange.BINANCE]
 
-    def __init__(self, event_engine: EventEngine, gateway_name: str = "BINANCEINVERSE") -> None:
+    def __init__(self, event_engine: EventEngine, gateway_name: str = "BINANCE_INVERSE") -> None:
         """构造函数"""
         super().__init__(event_engine, gateway_name)
 
@@ -147,13 +143,11 @@ class BinanceInverseGateway(BaseGateway):
         """连接交易接口"""
         key: str = setting["key"]
         secret: str = setting["secret"]
-        session_number: str = setting["会话数"]
         server: str = setting["服务器"]
         proxy_host: str = setting["代理地址"]
         proxy_port: str = setting["代理端口"]
 
-        self.rest_api.connect(key, secret, session_number, server,
-                              proxy_host, proxy_port)
+        self.rest_api.connect(key, secret, server, proxy_host, proxy_port)
         self.market_ws_api.connect(proxy_host, proxy_port, server)
 
         self.event_engine.register(EVENT_TIMER, self.process_timer_event)
@@ -203,7 +197,7 @@ class BinanceInverseGateway(BaseGateway):
 
 
 class BinanceInverseRestApi(RestClient):
-    """"""
+    """币安反向合约的REST API"""
 
     def __init__(self, gateway: BinanceInverseGateway) -> None:
         """构造函数"""
@@ -277,7 +271,6 @@ class BinanceInverseRestApi(RestClient):
         self,
         key: str,
         secret: str,
-        session_number: int,
         server: str,
         proxy_host: str,
         proxy_port: int
@@ -298,7 +291,7 @@ class BinanceInverseRestApi(RestClient):
         else:
             self.init(D_TESTNET_REST_HOST, proxy_host, proxy_port)
 
-        self.start(session_number)
+        self.start()
 
         self.gateway.write_log("REST API启动成功")
 
@@ -386,7 +379,7 @@ class BinanceInverseRestApi(RestClient):
     def send_order(self, req: OrderRequest) -> str:
         """委托下单"""
         # 生成本地委托号
-        orderid: str = "328hhn6c-" + str(self.connect_time + self._new_order_id())
+        orderid: str = str(self.connect_time + self._new_order_id())
 
         # 推送提交中事件
         order: OrderData = req.create_order_data(
@@ -703,17 +696,17 @@ class BinanceInverseRestApi(RestClient):
 
                 buf: List[BarData] = []
 
-                for l in data:
+                for row in data:
                     bar: BarData = BarData(
                         symbol=req.symbol,
                         exchange=req.exchange,
-                        datetime=generate_datetime(l[0]),
+                        datetime=generate_datetime(row[0]),
                         interval=req.interval,
-                        volume=float(l[5]),
-                        open_price=float(l[1]),
-                        high_price=float(l[2]),
-                        low_price=float(l[3]),
-                        close_price=float(l[4]),
+                        volume=float(row[5]),
+                        open_price=float(row[1]),
+                        high_price=float(row[2]),
+                        low_price=float(row[3]),
+                        close_price=float(row[4]),
                         gateway_name=self.gateway_name
                     )
                     buf.append(bar)
@@ -734,13 +727,12 @@ class BinanceInverseRestApi(RestClient):
                 end_dt = begin - TIMEDELTA_MAP[req.interval]
                 end_time = int(datetime.timestamp(end_dt))
 
-
         history = list(reversed(history))
         return history
 
 
 class BinanceInverseTradeWebsocketApi(WebsocketClient):
-    """"""
+    """币安反向合约的交易Websocket API"""
 
     def __init__(self, gateway: BinanceInverseGateway) -> None:
         """构造函数"""
@@ -845,7 +837,7 @@ class BinanceInverseTradeWebsocketApi(WebsocketClient):
 
 
 class BinanceInverseDataWebsocketApi(WebsocketClient):
-    """"""
+    """币安反向合约的行情Websocket API"""
 
     def __init__(self, gateway: BinanceInverseGateway) -> None:
         """构造函数"""
@@ -880,7 +872,7 @@ class BinanceInverseDataWebsocketApi(WebsocketClient):
         if req.symbol not in symbol_contract_map:
             self.gateway.write_log(f"找不到该合约代码{req.symbol}")
             return
-    
+
         if req.vt_symbol in self.subscribed:
             return
 

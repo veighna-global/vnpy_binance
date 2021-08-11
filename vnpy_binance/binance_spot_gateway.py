@@ -1,8 +1,3 @@
-"""
-1. 只支持全仓模式
-2. 只支持单向持仓模式
-"""
-
 import urllib
 import hashlib
 import hmac
@@ -39,10 +34,8 @@ from vnpy.trader.object import (
 )
 from vnpy.trader.event import EVENT_TIMER
 from vnpy.event import Event, EventEngine
-
-from vnpy_rest import Request, RestClient
+from vnpy_rest import RestClient, Request, Response
 from vnpy_websocket import WebsocketClient
-from vnpy_rest.rest_client import Response
 
 
 # 中国时区
@@ -110,7 +103,7 @@ class Security(Enum):
     API_KEY = 2
 
 
-class BinanceGateway(BaseGateway):
+class BinanceSpotGateway(BaseGateway):
     """
     vn.py用于对接币安现货账户的交易接口。
     """
@@ -118,21 +111,20 @@ class BinanceGateway(BaseGateway):
     default_setting: Dict[str, Any] = {
         "key": "",
         "secret": "",
-        "session_number": 3,
-        "proxy_host": "",
-        "proxy_port": 0,
-        "server": ["TESTNET", "REAL"]
+        "服务器": ["REAL", "TESTNET"],
+        "代理地址": "",
+        "代理端口": 0
     }
 
     exchanges: Exchange = [Exchange.BINANCE]
 
-    def __init__(self, event_engine: EventEngine, gateway_name: str = "BINANCE") -> None:
+    def __init__(self, event_engine: EventEngine, gateway_name: str = "BINANCE_SPOT") -> None:
         """构造函数"""
         super().__init__(event_engine, gateway_name)
 
-        self.trade_ws_api: "BinanceTradeWebsocketApi" = BinanceTradeWebsocketApi(self)
-        self.market_ws_api: "BinanceDataWebsocketApi" = BinanceDataWebsocketApi(self)
-        self.rest_api: "BinanceRestApi" = BinanceRestApi(self)
+        self.trade_ws_api: "BinanceSpotTradeWebsocketApi" = BinanceSpotTradeWebsocketApi(self)
+        self.market_ws_api: "BinanceSpotDataWebsocketApi" = BinanceSpotDataWebsocketApi(self)
+        self.rest_api: "BinanceSpotRestAPi" = BinanceSpotRestAPi(self)
 
         self.orders: Dict[str, OrderData] = {}
 
@@ -140,13 +132,11 @@ class BinanceGateway(BaseGateway):
         """连接交易接口"""
         key: str = setting["key"]
         secret: str = setting["secret"]
-        session_number: str = setting["session_number"]
-        proxy_host: str = setting["proxy_host"]
-        proxy_port: str = setting["proxy_port"]
-        server: str = setting["server"]
+        proxy_host: str = setting["代理地址"]
+        proxy_port: str = setting["代理端口"]
+        server: str = setting["服务器"]
 
-        self.rest_api.connect(key, secret, session_number,
-                              proxy_host, proxy_port, server)
+        self.rest_api.connect(key, secret, proxy_host, proxy_port, server)
         self.market_ws_api.connect(proxy_host, proxy_port, server)
 
         self.event_engine.register(EVENT_TIMER, self.process_timer_event)
@@ -195,17 +185,17 @@ class BinanceGateway(BaseGateway):
         return self.orders.get(orderid, None)
 
 
-class BinanceRestApi(RestClient):
-    """"""
+class BinanceSpotRestAPi(RestClient):
+    """币安现货REST API"""
 
-    def __init__(self, gateway: BinanceGateway) -> None:
+    def __init__(self, gateway: BinanceSpotGateway) -> None:
         """构造函数"""
         super().__init__()
 
-        self.gateway: BinanceGateway = gateway
+        self.gateway: BinanceSpotGateway = gateway
         self.gateway_name: str = gateway.gateway_name
 
-        self.trade_ws_api: BinanceTradeWebsocketApi = self.gateway.trade_ws_api
+        self.trade_ws_api: BinanceSpotTradeWebsocketApi = self.gateway.trade_ws_api
 
         self.key: str = ""
         self.secret: str = ""
@@ -270,7 +260,6 @@ class BinanceRestApi(RestClient):
         self,
         key: str,
         secret: str,
-        session_number: int,
         proxy_host: str,
         proxy_port: int,
         server: str
@@ -291,7 +280,7 @@ class BinanceRestApi(RestClient):
         else:
             self.init(TESTNET_REST_HOST, proxy_host, proxy_port)
 
-        self.start(session_number)
+        self.start()
 
         self.gateway.write_log("REST API启动成功")
 
@@ -358,7 +347,7 @@ class BinanceRestApi(RestClient):
     def send_order(self, req: OrderRequest) -> str:
         """委托下单"""
         # 生成本地委托号
-        orderid: str = "NKD8FYX4-" + str(self.connect_time + self._new_order_id())
+        orderid: str = str(self.connect_time + self._new_order_id())
 
         # 推送提交中事件
         order: OrderData = req.create_order_data(
@@ -634,17 +623,17 @@ class BinanceRestApi(RestClient):
 
                 buf: List[BarData] = []
 
-                for l in data:
+                for row in data:
                     bar: BarData = BarData(
                         symbol=req.symbol,
                         exchange=req.exchange,
-                        datetime=generate_datetime(l[0]),
+                        datetime=generate_datetime(row[0]),
                         interval=req.interval,
-                        volume=float(l[5]),
-                        open_price=float(l[1]),
-                        high_price=float(l[2]),
-                        low_price=float(l[3]),
-                        close_price=float(l[4]),
+                        volume=float(row[5]),
+                        open_price=float(row[1]),
+                        high_price=float(row[2]),
+                        low_price=float(row[3]),
+                        close_price=float(row[4]),
                         gateway_name=self.gateway_name
                     )
                     buf.append(bar)
@@ -667,14 +656,14 @@ class BinanceRestApi(RestClient):
         return history
 
 
-class BinanceTradeWebsocketApi(WebsocketClient):
-    """"""
+class BinanceSpotTradeWebsocketApi(WebsocketClient):
+    """币安现货交易Websocket API"""
 
-    def __init__(self, gateway: BinanceGateway) -> None:
+    def __init__(self, gateway: BinanceSpotGateway) -> None:
         """构造函数"""
         super().__init__()
 
-        self.gateway: BinanceGateway = gateway
+        self.gateway: BinanceSpotGateway = gateway
         self.gateway_name = gateway.gateway_name
 
     def connect(self, url: str, proxy_host: int, proxy_port: int) -> None:
@@ -752,14 +741,14 @@ class BinanceTradeWebsocketApi(WebsocketClient):
         self.gateway.on_trade(trade)
 
 
-class BinanceDataWebsocketApi(WebsocketClient):
-    """"""
+class BinanceSpotDataWebsocketApi(WebsocketClient):
+    """币安现货行情Websocket API"""
 
-    def __init__(self, gateway: BinanceGateway) -> None:
+    def __init__(self, gateway: BinanceSpotGateway) -> None:
         """构造函数"""
         super().__init__()
 
-        self.gateway: BinanceGateway = gateway
+        self.gateway: BinanceSpotGateway = gateway
         self.gateway_name: str = gateway.gateway_name
 
         self.subscribed: Dict[str, SubscribeRequest] = {}
