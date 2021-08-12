@@ -703,7 +703,7 @@ class BinanceInverseRestApi(RestClient):
                         datetime=generate_datetime(row[0]),
                         interval=req.interval,
                         volume=float(row[5]),
-                        turnover=float(row(7)),
+                        turnover=float(row[7]),
                         open_price=float(row[1]),
                         high_price=float(row[2]),
                         low_price=float(row[3]),
