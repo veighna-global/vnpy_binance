@@ -366,7 +366,7 @@ class BinanceSpotRestAPi(RestClient):
             "side": DIRECTION_VT2BINANCE[req.direction],
             "type": ORDERTYPE_VT2BINANCE[req.type],
             "price": str(req.price),
-            "quantity": str(req.volume),
+            "quantity": f"{req.volume:2f}",
             "newClientOrderId": orderid,
             "newOrderRespType": "ACK"
         }
@@ -630,6 +630,7 @@ class BinanceSpotRestAPi(RestClient):
                         datetime=generate_datetime(row[0]),
                         interval=req.interval,
                         volume=float(row[5]),
+                        turnover=float(row[7]),
                         open_price=float(row[1]),
                         high_price=float(row[2]),
                         low_price=float(row[3]),
@@ -818,6 +819,7 @@ class BinanceSpotDataWebsocketApi(WebsocketClient):
 
         if channel == "ticker":
             tick.volume = float(data['v'])
+            tick.turnover = float(data['q'])
             tick.open_price = float(data['o'])
             tick.high_price = float(data['h'])
             tick.low_price = float(data['l'])
@@ -837,6 +839,7 @@ class BinanceSpotDataWebsocketApi(WebsocketClient):
                 tick.__setattr__("ask_volume_" + str(n + 1), float(volume))
 
         if tick.last_price:
+            tick.localtime = datetime.now()
             self.gateway.on_tick(copy(tick))
 
 
