@@ -46,14 +46,14 @@ REST_HOST: str = "https://api.binance.com"
 
 # 实盘Websocket API地址
 WEBSOCKET_TRADE_HOST: str = "wss://stream.binance.com:9443/ws/"
-WEBSOCKET_DATA_HOST: str = "wss://stream.binance.com:9443/stream?streams="
+WEBSOCKET_DATA_HOST: str = "wss://stream.binance.com:9443/stream"
 
 # 模拟盘REST API地址
 TESTNET_REST_HOST: str = "https://testnet.binance.vision"
 
 # 模拟盘Websocket API地址
 TESTNET_WEBSOCKET_TRADE_HOST: str = "wss://testnet.binance.vision/ws/"
-TESTNET_WEBSOCKET_DATA_HOST: str = "wss://testnet.binance.vision/stream?streams="
+TESTNET_WEBSOCKET_DATA_HOST: str = "wss://testnet.binance.vision/stream"
 
 # 委托状态映射
 STATUS_BINANCE2VT: Dict[str, Status] = {
@@ -754,12 +754,16 @@ class BinanceSpotDataWebsocketApi(WebsocketClient):
 
         self.subscribed: Dict[str, SubscribeRequest] = {}
         self.ticks: Dict[str, TickData] = {}
+        self.reqid: int = 0
 
     def connect(self, proxy_host: str, proxy_port: int, server: str):
         """连接Websocket行情频道"""
-        self.proxy_host = proxy_host
-        self.proxy_port = proxy_port
-        self.server = server
+        if server == "REAL":
+            self.init(WEBSOCKET_DATA_HOST, proxy_host, proxy_port)
+        else:
+            self.init(TESTNET_WEBSOCKET_DATA_HOST, proxy_host, proxy_port)
+
+        self.start()
 
     def on_connected(self) -> None:
         """连接成功回报"""
@@ -774,8 +778,7 @@ class BinanceSpotDataWebsocketApi(WebsocketClient):
             self.gateway.write_log(f"找不到该合约代码{req.symbol}")
             return
 
-        if req.vt_symbol in self.subscribed:
-            return
+        self.reqid += 1
 
         # 缓存订阅记录
         self.subscribed[req.vt_symbol] = req
@@ -790,28 +793,25 @@ class BinanceSpotDataWebsocketApi(WebsocketClient):
         )
         self.ticks[req.symbol] = tick
 
-        # 关闭之前的连接
-        if self._active:
-            self.stop()
-            self.join()
-
-        # 创建新的连接
         channels = []
         for ws_symbol in self.ticks.keys():
             channels.append(ws_symbol + "@ticker")
             channels.append(ws_symbol + "@depth5")
 
-        if self.server == "REAL":
-            url = WEBSOCKET_DATA_HOST + "/".join(channels)
-        else:
-            url = TESTNET_WEBSOCKET_DATA_HOST + "/".join(channels)
-
-        self.init(url, self.proxy_host, self.proxy_port)
-        self.start()
+        req: dict = {
+            "method": "SUBSCRIBE",
+            "params": channels,
+            "id": self.reqid
+        }
+        self.send_packet(req)
 
     def on_packet(self, packet: dict) -> None:
         """推送数据回报"""
-        stream: str = packet["stream"]
+        stream:str = packet.get("stream", None)
+
+        if not stream:
+            return
+
         data: dict = packet["data"]
 
         symbol, channel = stream.split("@")
