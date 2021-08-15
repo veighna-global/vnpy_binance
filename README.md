@@ -1,4 +1,4 @@
--# vn.py框架的BINANCE底层接口
+# vn.py框架的BINANCE底层接口
 
 <p align="center">
   <img src ="https://vnpy.oss-cn-shanghai.aliyuncs.com/vnpy-logo.png"/>
