@@ -471,6 +471,10 @@ class BinanceSpotRestAPi(RestClient):
     def on_query_order(self, data: dict, request: Request) -> None:
         """未成交委托查询回报"""
         for d in data:
+            # 过滤不支持类型的委托
+            if d["type"] not in ORDERTYPE_BINANCE2VT:
+                continue
+
             order: OrderData = OrderData(
                 orderid=d["clientOrderId"],
                 symbol=d["symbol"].lower(),
@@ -698,6 +702,10 @@ class BinanceSpotTradeWebsocketApi(WebsocketClient):
 
     def on_order(self, packet: dict) -> None:
         """委托更新推送"""
+        # 过滤不支持类型的委托
+        if packet["o"] not in ORDERTYPE_BINANCE2VT:
+            return
+
         if packet["C"] == "":
             orderid: str = packet["c"]
         else:
