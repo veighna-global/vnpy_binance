@@ -43,9 +43,8 @@ from vnpy.trader.object import (
 from vnpy.trader.event import EVENT_TIMER
 from vnpy.event import Event, EventEngine
 
-from vnpy_rest import Request, RestClient
+from vnpy_rest import Request, RestClient, Response
 from vnpy_websocket import WebsocketClient
-from vnpy_rest.rest_client import Response
 
 
 # 中国时区
