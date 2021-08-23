@@ -23,8 +23,7 @@ from vnpy.trader.constant import (
     Product,
     Status,
     OrderType,
-    Interval,
-    Offset
+    Interval
 )
 from vnpy.trader.gateway import BaseGateway
 from vnpy.trader.object import (
@@ -403,9 +402,6 @@ class BinanceInverseRestApi(RestClient):
             "quantity": float(req.volume),
             "newClientOrderId": orderid,
         }
-
-        if req.offset == Offset.CLOSE:
-            params["reduceOnly"] = True
 
         path: str = "/dapi/v1/order"
 
