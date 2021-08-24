@@ -145,7 +145,7 @@ class BinanceUsdtGateway(BaseGateway):
         secret: str = setting["secret"]
         server: str = setting["服务器"]
         proxy_host: str = setting["代理地址"]
-        proxy_port: str = setting["代理端口"]
+        proxy_port: int = setting["代理端口"]
 
         self.rest_api.connect(key, secret, server, proxy_host, proxy_port)
         self.market_ws_api.connect(proxy_host, proxy_port, server)
