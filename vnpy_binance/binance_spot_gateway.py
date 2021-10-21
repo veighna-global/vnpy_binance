@@ -61,7 +61,8 @@ STATUS_BINANCE2VT: Dict[str, Status] = {
     "PARTIALLY_FILLED": Status.PARTTRADED,
     "FILLED": Status.ALLTRADED,
     "CANCELED": Status.CANCELLED,
-    "REJECTED": Status.REJECTED
+    "REJECTED": Status.REJECTED,
+    "EXPIRED": Status.CANCELLED
 }
 
 # 委托类型映射
@@ -365,7 +366,6 @@ class BinanceSpotRestAPi(RestClient):
             "symbol": req.symbol.upper(),
             "side": DIRECTION_VT2BINANCE[req.direction],
             "type": ORDERTYPE_VT2BINANCE[req.type],
-            "price": str(req.price),
             "quantity": format(req.volume, "f"),
             "newClientOrderId": orderid,
             "newOrderRespType": "ACK"
@@ -373,6 +373,7 @@ class BinanceSpotRestAPi(RestClient):
 
         if req.type == OrderType.LIMIT:
             params["timeInForce"] = "GTC"
+            params["price"] = str(req.price)
 
         self.add_request(
             method="POST",

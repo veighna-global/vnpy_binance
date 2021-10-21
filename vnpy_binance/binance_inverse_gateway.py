@@ -390,18 +390,21 @@ class BinanceInverseRestApi(RestClient):
             "security": Security.SIGNED
         }
 
-        order_type, time_condition = ORDERTYPE_VT2BINANCES[req.type]
-
         # 生成委托请求
         params: dict = {
             "symbol": req.symbol,
             "side": DIRECTION_VT2BINANCES[req.direction],
-            "type": order_type,
-            "timeInForce": time_condition,
-            "price": float(req.price),
             "quantity": float(req.volume),
             "newClientOrderId": orderid,
         }
+
+        if req.type == OrderType.MARKET:
+            params["type"] = "MARKET"
+        else:
+            order_type, time_condition = ORDERTYPE_VT2BINANCES[req.type]
+            params["type"] = order_type
+            params["timeInForce"] = time_condition
+            params["price"] = float(req.price)
 
         path: str = "/dapi/v1/order"
 
