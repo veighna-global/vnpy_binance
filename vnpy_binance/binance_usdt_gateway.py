@@ -869,11 +869,10 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
         """连接成功回报"""
         self.gateway.write_log("行情Websocket API连接刷新")
 
-        for req in list(self.subscribed.values()):
-            self.subscribe(req)
+        self.subscribe(list(self.subscribed.values()))
 
-    def subscribe(self, req: SubscribeRequest) -> None:
-        """订阅行情"""
+    def create_tick_data(self, req: SubscribeRequest) -> None:
+        """创建储存切片数据的容器"""
         if req.symbol not in symbol_contract_map:
             self.gateway.write_log(f"找不到该合约代码{req.symbol}")
             return
@@ -892,6 +891,14 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
             gateway_name=self.gateway_name,
         )
         self.ticks[req.symbol.lower()] = tick
+
+    def subscribe(self, req: SubscribeRequest) -> None:
+        """订阅行情"""
+        if isinstance(req, list):
+            for d in req:
+                self.create_tick_data(d)
+        else:
+            self.create_tick_data(req)
 
         channels = []
         for ws_symbol in self.ticks.keys():
