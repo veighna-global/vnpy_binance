@@ -862,7 +862,7 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
             self.init(F_WEBSOCKET_DATA_HOST, proxy_host, proxy_port)
         else:
             self.init(F_TESTNET_WEBSOCKET_DATA_HOST, proxy_host, proxy_port)
-    
+
         self.start()
 
     def on_connected(self) -> None:
@@ -907,7 +907,7 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
 
     def on_packet(self, packet: dict) -> None:
         """推送数据回报"""
-        stream:str = packet.get("stream", None)
+        stream: str = packet.get("stream", None)
 
         if not stream:
             return

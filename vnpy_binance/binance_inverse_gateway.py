@@ -905,7 +905,7 @@ class BinanceInverseDataWebsocketApi(WebsocketClient):
 
     def on_packet(self, packet: dict) -> None:
         """推送数据回报"""
-        stream:str = packet.get("stream", None)
+        stream: str = packet.get("stream", None)
 
         if not stream:
             return
