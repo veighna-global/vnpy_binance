@@ -847,7 +847,6 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
         self.gateway: BinanceUsdtGateway = gateway
         self.gateway_name: str = gateway.gateway_name
 
-        self.subscribed: Dict[str, SubscribeRequest] = {}
         self.ticks: Dict[str, TickData] = {}
         self.reqid: int = 0
 
@@ -862,26 +861,37 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
             self.init(F_WEBSOCKET_DATA_HOST, proxy_host, proxy_port)
         else:
             self.init(F_TESTNET_WEBSOCKET_DATA_HOST, proxy_host, proxy_port)
-    
+
         self.start()
 
     def on_connected(self) -> None:
         """连接成功回报"""
-        self.gateway.write_log("行情Websocket API连接刷新")
+        self.gateway.write_log("行情Websocket API连接成功")
 
-        for req in list(self.subscribed.values()):
-            self.subscribe(req)
+        # 重新订阅行情
+        if self.ticks:
+            channels = []
+            for symbol in self.ticks.keys():
+                channels.append(f"{symbol}@ticker")
+                channels.append(f"{symbol}@depth5")
+
+            req: dict = {
+                "method": "SUBSCRIBE",
+                "params": channels,
+                "id": self.reqid
+            }
+            self.send_packet(req)
 
     def subscribe(self, req: SubscribeRequest) -> None:
         """订阅行情"""
+        if req.symbol in self.ticks:
+            return
+
         if req.symbol not in symbol_contract_map:
             self.gateway.write_log(f"找不到该合约代码{req.symbol}")
             return
 
         self.reqid += 1
-
-        # 缓存订阅记录
-        self.subscribed[req.vt_symbol] = req
 
         # 创建TICK对象
         tick: TickData = TickData(
@@ -893,10 +903,10 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
         )
         self.ticks[req.symbol.lower()] = tick
 
-        channels = []
-        for ws_symbol in self.ticks.keys():
-            channels.append(ws_symbol + "@ticker")
-            channels.append(ws_symbol + "@depth5")
+        channels = [
+            f"{req.symbol}@ticker",
+            f"{req.symbol}@depth5"
+        ]
 
         req: dict = {
             "method": "SUBSCRIBE",
@@ -907,7 +917,7 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
 
     def on_packet(self, packet: dict) -> None:
         """推送数据回报"""
-        stream:str = packet.get("stream", None)
+        stream: str = packet.get("stream", None)
 
         if not stream:
             return
