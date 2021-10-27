@@ -904,8 +904,8 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
         self.ticks[req.symbol.lower()] = tick
 
         channels = [
-            f"{req.symbol}@ticker",
-            f"{req.symbol}@depth5"
+            f"{req.symbol.lower()}@ticker",
+            f"{req.symbol.lower()}@depth5"
         ]
 
         req: dict = {
