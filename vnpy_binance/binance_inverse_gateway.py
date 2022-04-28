@@ -580,7 +580,7 @@ class BinanceInverseRestApi(RestClient):
                 exchange=Exchange.BINANCE,
                 name=name,
                 pricetick=pricetick,
-                size=1,
+                size=d["contractSize"],
                 min_volume=min_volume,
                 product=Product.FUTURES,
                 net_position=True,
