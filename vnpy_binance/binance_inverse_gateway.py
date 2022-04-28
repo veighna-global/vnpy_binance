@@ -117,6 +117,8 @@ class Security(Enum):
 class BinanceInverseGateway(BaseGateway):
     """vn.py用于对接币安反向合约的交易接口"""
 
+    default_name: str = "BINANCE_INVERSE"
+
     default_setting: Dict[str, Any] = {
         "key": "",
         "secret": "",
@@ -127,7 +129,7 @@ class BinanceInverseGateway(BaseGateway):
 
     exchanges: Exchange = [Exchange.BINANCE]
 
-    def __init__(self, event_engine: EventEngine, gateway_name: str = "BINANCE_INVERSE") -> None:
+    def __init__(self, event_engine: EventEngine, gateway_name: str) -> None:
         """构造函数"""
         super().__init__(event_engine, gateway_name)
 

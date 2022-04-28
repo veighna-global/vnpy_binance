@@ -109,6 +109,8 @@ class BinanceSpotGateway(BaseGateway):
     vn.py用于对接币安现货账户的交易接口。
     """
 
+    default_name: str = "BINANCE_SPOT"
+
     default_setting: Dict[str, Any] = {
         "key": "",
         "secret": "",
@@ -119,7 +121,7 @@ class BinanceSpotGateway(BaseGateway):
 
     exchanges: Exchange = [Exchange.BINANCE]
 
-    def __init__(self, event_engine: EventEngine, gateway_name: str = "BINANCE_SPOT") -> None:
+    def __init__(self, event_engine: EventEngine, gateway_name: str) -> None:
         """构造函数"""
         super().__init__(event_engine, gateway_name)
 
