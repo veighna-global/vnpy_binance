@@ -799,6 +799,7 @@ class BinanceInverseTradeWebsocketApi(WebsocketClient):
         order_type: OrderType = ORDERTYPE_BINANCES2VT.get(key, None)
         if not order_type:
             return
+        offset = self.gateway.get_order(ord_data["c"]).offset
 
         order: OrderData = OrderData(
             symbol=ord_data["s"],
@@ -811,7 +812,8 @@ class BinanceInverseTradeWebsocketApi(WebsocketClient):
             traded=float(ord_data["z"]),
             status=STATUS_BINANCES2VT[ord_data["X"]],
             datetime=generate_datetime(packet["E"]),
-            gateway_name=self.gateway_name
+            gateway_name=self.gateway_name,
+            offset=offset
         )
 
         self.gateway.on_order(order)
@@ -835,6 +837,7 @@ class BinanceInverseTradeWebsocketApi(WebsocketClient):
             volume=trade_volume,
             datetime=generate_datetime(ord_data["T"]),
             gateway_name=self.gateway_name,
+            offset=offset
         )
         self.gateway.on_trade(trade)
 

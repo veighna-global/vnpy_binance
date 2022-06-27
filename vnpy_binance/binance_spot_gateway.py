@@ -716,6 +716,8 @@ class BinanceSpotTradeWebsocketApi(WebsocketClient):
         else:
             orderid: str = packet["C"]
 
+        offset = self.gateway.get_order(orderid).offset
+
         order: OrderData = OrderData(
             symbol=packet["s"].lower(),
             exchange=Exchange.BINANCE,
@@ -727,7 +729,8 @@ class BinanceSpotTradeWebsocketApi(WebsocketClient):
             traded=float(packet["z"]),
             status=STATUS_BINANCE2VT[packet["X"]],
             datetime=generate_datetime(packet["O"]),
-            gateway_name=self.gateway_name
+            gateway_name=self.gateway_name,
+            offset=offset
         )
 
         self.gateway.on_order(order)
@@ -751,6 +754,7 @@ class BinanceSpotTradeWebsocketApi(WebsocketClient):
             volume=trade_volume,
             datetime=generate_datetime(packet["T"]),
             gateway_name=self.gateway_name,
+            offset=offset
         )
         self.gateway.on_trade(trade)
 
