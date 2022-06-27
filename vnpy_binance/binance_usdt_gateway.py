@@ -472,6 +472,8 @@ class BinanceUsdtRestApi(RestClient):
         if self.keep_alive_count < 600:
             return
         self.keep_alive_count = 0
+        self.start_user_stream()
+        return
 
         data: dict = {
             "security": Security.API_KEY
