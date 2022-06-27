@@ -799,7 +799,7 @@ class BinanceInverseTradeWebsocketApi(WebsocketClient):
         order_type: OrderType = ORDERTYPE_BINANCES2VT.get(key, None)
         if not order_type:
             return
-        offset = self.gateway.get_order(ord_data["c"]).offset
+        offset = self.gateway.get_order(ord_data["c"]).offset if self.gateway.get_order(ord_data["c"]) else None
 
         order: OrderData = OrderData(
             symbol=ord_data["s"],

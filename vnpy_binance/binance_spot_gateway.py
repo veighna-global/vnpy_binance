@@ -716,7 +716,7 @@ class BinanceSpotTradeWebsocketApi(WebsocketClient):
         else:
             orderid: str = packet["C"]
 
-        offset = self.gateway.get_order(orderid).offset
+        offset = self.gateway.get_order(orderid).offset if self.gateway.get_order(orderid) else None
 
         order: OrderData = OrderData(
             symbol=packet["s"].lower(),
