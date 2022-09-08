@@ -44,6 +44,9 @@ from vnpy.event import Event, EventEngine
 
 from vnpy_rest import Request, RestClient, Response
 from vnpy_websocket import WebsocketClient
+from asyncio import (
+    run_coroutine_threadsafe
+)
 
 
 # 中国时区
@@ -472,8 +475,6 @@ class BinanceUsdtRestApi(RestClient):
         if self.keep_alive_count < 600:
             return
         self.keep_alive_count = 0
-        self.start_user_stream()
-        return
 
         data: dict = {
             "security": Security.API_KEY
@@ -761,6 +762,21 @@ class BinanceUsdtTradeWebsocketApi(WebsocketClient):
             self.on_account(packet)
         elif packet["e"] == "ORDER_TRADE_UPDATE":
             self.on_order(packet)
+        elif packet["e"] == "listenKeyExpired":
+            self.on_listen_key_expired()
+
+    def on_listen_key_expired(self) ->None:
+        """ListenKey过期"""
+        self.gateway.write_log("listenKey过期")
+        self.disconnect()
+
+    def disconnect(self) ->None:
+        """"主动断开webscoket链接"""
+        self._active = False
+        ws = self._ws
+        if ws:
+            coro = ws.close()
+            run_coroutine_threadsafe(coro, self._loop)
 
     def on_account(self, packet: dict) -> None:
         """资金更新推送"""
@@ -842,6 +858,12 @@ class BinanceUsdtTradeWebsocketApi(WebsocketClient):
             offset=offset
         )
         self.gateway.on_trade(trade)
+
+    def on_disconnected(self) -> None:
+        """连接断开回报"""
+        self.gateway.write_log("交易Websocket API断开")
+        self.gateway.rest_api.start_user_stream()
+
 
 
 class BinanceUsdtDataWebsocketApi(WebsocketClient):
@@ -958,6 +980,10 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
         if tick.last_price:
             tick.localtime = datetime.now()
             self.gateway.on_tick(copy(tick))
+
+    def on_disconnected(self) -> None:
+        """连接断开回报"""
+        self.gateway.write_log("行情Websocket API断开")
 
 
 def generate_datetime(timestamp: float) -> datetime:
