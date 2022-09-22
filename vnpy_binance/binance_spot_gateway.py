@@ -378,6 +378,9 @@ class BinanceSpotRestAPi(RestClient):
         if req.type == OrderType.LIMIT:
             params["timeInForce"] = "GTC"
             params["price"] = str(req.price)
+        elif req.type == OrderType.STOP:
+            params["type"] = "STOP_MARKET"
+            params["stopPrice"] = float(req.price)
 
         self.add_request(
             method="POST",
@@ -523,6 +526,7 @@ class BinanceSpotRestAPi(RestClient):
                 product=Product.SPOT,
                 history_data=True,
                 gateway_name=self.gateway_name,
+                stop_supported=True
             )
             self.gateway.on_contract(contract)
 
