@@ -404,6 +404,9 @@ class BinanceInverseRestApi(RestClient):
 
         if req.type == OrderType.MARKET:
             params["type"] = "MARKET"
+        elif req.type == OrderType.STOP:
+            params["type"] = "STOP_MARKET"
+            params["stopPrice"] = float(req.price)
         else:
             order_type, time_condition = ORDERTYPE_VT2BINANCES[req.type]
             params["type"] = order_type
@@ -588,6 +591,7 @@ class BinanceInverseRestApi(RestClient):
                 net_position=True,
                 history_data=True,
                 gateway_name=self.gateway_name,
+                stop_supported=True
             )
             self.gateway.on_contract(contract)
 
