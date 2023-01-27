@@ -36,7 +36,9 @@ from vnpy.trader.event import EVENT_TIMER
 from vnpy.event import Event, EventEngine
 from vnpy_rest import RestClient, Request, Response
 from vnpy_websocket import WebsocketClient
-
+from asyncio import (
+    run_coroutine_threadsafe
+)
 
 # 中国时区
 CHINA_TZ = pytz.timezone("Asia/Shanghai")
@@ -689,6 +691,21 @@ class BinanceSpotTradeWebsocketApi(WebsocketClient):
             self.on_account(packet)
         elif packet["e"] == "executionReport":
             self.on_order(packet)
+        elif packet["e"] == "listenKeyExpired":
+            self.on_listen_key_expired()
+
+    def on_listen_key_expired(self) ->None:
+        """ListenKey过期"""
+        self.gateway.write_log("listenKey过期")
+        self.disconnect()
+
+    def disconnect(self) ->None:
+        """"主动断开webscoket链接"""
+        self._active = False
+        ws = self._ws
+        if ws:
+            coro = ws.close()
+            run_coroutine_threadsafe(coro, self._loop)
 
     def on_account(self, packet: dict) -> None:
         """资金更新推送"""
@@ -714,6 +731,8 @@ class BinanceSpotTradeWebsocketApi(WebsocketClient):
         else:
             orderid: str = packet["C"]
 
+        offset = self.gateway.get_order(orderid).offset if self.gateway.get_order(orderid) else None
+
         order: OrderData = OrderData(
             symbol=packet["s"].lower(),
             exchange=Exchange.BINANCE,
@@ -725,7 +744,8 @@ class BinanceSpotTradeWebsocketApi(WebsocketClient):
             traded=float(packet["z"]),
             status=STATUS_BINANCE2VT[packet["X"]],
             datetime=generate_datetime(packet["O"]),
-            gateway_name=self.gateway_name
+            gateway_name=self.gateway_name,
+            offset=offset
         )
 
         self.gateway.on_order(order)
@@ -749,8 +769,14 @@ class BinanceSpotTradeWebsocketApi(WebsocketClient):
             volume=trade_volume,
             datetime=generate_datetime(packet["T"]),
             gateway_name=self.gateway_name,
+            offset=offset
         )
         self.gateway.on_trade(trade)
+
+    def on_disconnected(self) -> None:
+        """连接断开回报"""
+        self.gateway.write_log("交易Websocket API断开")
+        self.gateway.rest_api.start_user_stream()
 
 
 class BinanceSpotDataWebsocketApi(WebsocketClient):
@@ -862,6 +888,10 @@ class BinanceSpotDataWebsocketApi(WebsocketClient):
         if tick.last_price:
             tick.localtime = datetime.now()
             self.gateway.on_tick(copy(tick))
+
+    def on_disconnected(self) -> None:
+        """连接断开回报"""
+        self.gateway.write_log("行情Websocket API断开")
 
 
 def generate_datetime(timestamp: float) -> datetime:
