@@ -28,6 +28,6 @@ from .binance_inverse_gateway import BinanceInverseGateway
 
 
 try:
-    __version__ = importlib_metadata.version("vnpy_binance")
+    __version__ = importlib_metadata.version("vnpy_binance_pro")
 except importlib_metadata.PackageNotFoundError:
     __version__ = "dev"
