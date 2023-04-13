@@ -1,28 +1,10 @@
-# vn.py框架的BINANCE底层接口
+# vnpy-binance-pro
 
-<p align="center">
-  <img src ="https://vnpy.oss-cn-shanghai.aliyuncs.com/vnpy-logo.png"/>
-</p>
-
-<p align="center">
-    <img src ="https://img.shields.io/badge/version-2022.4.28-blueviolet.svg"/>
-    <img src ="https://img.shields.io/badge/platform-windows|linux|macos-yellow.svg"/>
-    <img src ="https://img.shields.io/badge/python-3.7|3.8|3.9|3.10-blue.svg" />
-    <img src ="https://img.shields.io/github/license/vnpy/vnpy.svg?color=orange"/>
-</p>
-
-关于使用VeighNa框架进行Crypto交易的话题，新开了一个[Github Discussions论坛](https://github.com/vn-crypto/vnpy_crypto/discussions)，欢迎通过这里来进行讨论交流。
+继承自[veighna-global/vnpy_binance](https://github.com/veighna-global/vnpy_binance)
 
 ## 说明
 
-基于币安交易所的API开发，支持账户下的现货、期货、永续交易。
-
-使用时需要注意本接口：
-
-1. 只支持全仓保证金模式
-2. 只支持单向持仓模式
-
-请在BINANCE网站完成账户的相应设置后再使用。
+增加了接口的可用性，限速等
 
 ## 安装
 
@@ -31,7 +13,7 @@
 直接使用pip命令：
 
 ```
-pip install vnpy_binance
+pip install vnpy_binance_pro
 ```
 
 下载解压后在cmd中运行
