@@ -695,8 +695,8 @@ class BinanceUsdtRestApi(RestClient):
             # 限速控制
             if resp.status_code == 429:
                 self.gateway.write_log(f"{resp.status_code=},{resp.text=}")
-                time.sleep(sleep_seconds)
                 self.gateway.write_log(f"{sleep_seconds=} for retring connection")
+                time.sleep(sleep_seconds)
                 sleep_seconds *= 2
                 continue
             else:
