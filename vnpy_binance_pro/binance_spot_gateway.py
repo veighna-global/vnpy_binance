@@ -262,12 +262,12 @@ class BinanceSpotRestAPi(RestClient):
         return request
 
     def connect(
-        self,
-        key: str,
-        secret: str,
-        proxy_host: str,
-        proxy_port: int,
-        server: str
+            self,
+            key: str,
+            secret: str,
+            proxy_host: str,
+            proxy_port: int,
+            server: str
     ) -> None:
         """连接REST服务器"""
         self.key = key
@@ -277,7 +277,7 @@ class BinanceSpotRestAPi(RestClient):
         self.server = server
 
         self.connect_time = (
-            int(datetime.now(CHINA_TZ).strftime("%y%m%d%H%M%S")) * self.order_count
+                int(datetime.now(CHINA_TZ).strftime("%y%m%d%H%M%S")) * self.order_count
         )
 
         if self.server == "REAL":
@@ -548,7 +548,7 @@ class BinanceSpotRestAPi(RestClient):
         self.gateway.write_log(msg)
 
     def on_send_order_error(
-        self, exception_type: type, exception_value: Exception, tb, request: Request
+            self, exception_type: type, exception_value: Exception, tb, request: Request
     ) -> None:
         """委托下单回报函数报错回报"""
         order: OrderData = request.extra
@@ -589,7 +589,7 @@ class BinanceSpotRestAPi(RestClient):
         pass
 
     def on_keep_user_stream_error(
-        self, exception_type: type, exception_value: Exception, tb, request: Request
+            self, exception_type: type, exception_value: Exception, tb, request: Request
     ) -> None:
         """延长listenKey有效期函数报错回报"""
         # 当延长listenKey有效期时，忽略超时报错
@@ -602,18 +602,19 @@ class BinanceSpotRestAPi(RestClient):
         limit: int = 1000
         start_time: int = int(datetime.timestamp(req.start))
 
+        sleep_seconds = 0.5
         while True:
             # 创建查询参数
             params: dict = {
                 "symbol": req.symbol.upper(),
                 "interval": INTERVAL_VT2BINANCE[req.interval],
                 "limit": limit,
-                "startTime": start_time * 1000,         # 转换成毫秒
+                "startTime": start_time * 1000,  # 转换成毫秒
             }
 
             if req.end:
                 end_time: int = int(datetime.timestamp(req.end))
-                params["endTime"] = end_time * 1000     # 转换成毫秒
+                params["endTime"] = end_time * 1000  # 转换成毫秒
 
             resp: Response = self.request(
                 "GET",
@@ -622,6 +623,14 @@ class BinanceSpotRestAPi(RestClient):
                 params=params
             )
 
+            if resp.status_code == 429:
+                self.gateway.write_log(f"{resp.status_code=},{resp.text=}")
+                self.gateway.write_log(f"{sleep_seconds=} for retring connection")
+                time.sleep(sleep_seconds)
+                sleep_seconds *= 2
+                continue
+            else:
+                sleep_seconds = 0.5
             # 如果请求失败则终止循环
             if resp.status_code // 100 != 2:
                 msg: str = f"获取历史数据失败，状态码：{resp.status_code}，信息：{resp.text}"
@@ -698,12 +707,12 @@ class BinanceSpotTradeWebsocketApi(WebsocketClient):
         elif packet["e"] == "listenKeyExpired":
             self.on_listen_key_expired()
 
-    def on_listen_key_expired(self) ->None:
+    def on_listen_key_expired(self) -> None:
         """ListenKey过期"""
         self.gateway.write_log("listenKey过期")
         self.disconnect()
 
-    def disconnect(self) ->None:
+    def disconnect(self) -> None:
         """"主动断开webscoket链接"""
         self._active = False
         ws = self._ws
