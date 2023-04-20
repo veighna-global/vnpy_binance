@@ -683,9 +683,12 @@ class BinanceUsdtRestApi(RestClient):
             params["startTime"] = start_time * 1000
             path: str = "/fapi/v1/klines"
             if req.end:
-                interval_seconds = int(TIMEDELTA_MAP[req.interval].total_seconds())
-                end_time: int = int(datetime.timestamp(req.end)) // interval_seconds * interval_seconds
-                params["endTime"] = end_time * 1000 - 1  # 转换成毫秒
+                end_time: int = int(datetime.timestamp(req.end))
+                interval_seconds = int(TIMEDELTA_MAP[req.interval].total_seconds())  # 周期的秒数
+                if end_time // interval_seconds == datetime.now().timestamp() // interval_seconds:  # 结束于现在，则不要当下未完成的柱子
+                    end_time -= interval_seconds
+
+                params["endTime"] = end_time * 1000
             resp: Response = self.request(
                 "GET",
                 path=path,
