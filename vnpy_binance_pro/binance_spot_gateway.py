@@ -614,7 +614,11 @@ class BinanceSpotRestAPi(RestClient):
 
             if req.end:
                 end_time: int = int(datetime.timestamp(req.end))
-                params["endTime"] = end_time * 1000  # 转换成毫秒
+                interval_seconds = int(TIMEDELTA_MAP[req.interval].total_seconds())  # 周期的秒数
+                if end_time // interval_seconds == datetime.now().timestamp() // interval_seconds:  # 结束于现在，则不要当下未完成的柱子
+                    end_time -= interval_seconds
+
+                params["endTime"] = end_time * 1000
 
             resp: Response = self.request(
                 "GET",
