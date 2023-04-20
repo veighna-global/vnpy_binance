@@ -613,8 +613,10 @@ class BinanceSpotRestAPi(RestClient):
             }
 
             if req.end:
-                end_time: int = int(datetime.timestamp(req.end))
-                params["endTime"] = end_time * 1000  # 转换成毫秒
+                interval_seconds = int(TIMEDELTA_MAP[req.interval].total_seconds())
+                end_time: int = int(datetime.timestamp(req.end)) // interval_seconds * interval_seconds
+
+                params["endTime"] = end_time * 1000 - 1  # 转换成毫秒
 
             resp: Response = self.request(
                 "GET",
