@@ -1,3 +1,4 @@
+# flake8: noqa
 import vnpy_crypto
 vnpy_crypto.init()
 

@@ -769,12 +769,12 @@ class BinanceUsdtTradeWebsocketApi(WebsocketClient):
         elif packet["e"] == "listenKeyExpired":
             self.on_listen_key_expired()
 
-    def on_listen_key_expired(self) ->None:
+    def on_listen_key_expired(self) -> None:
         """ListenKey过期"""
         self.gateway.write_log("listenKey过期")
         self.disconnect()
 
-    def disconnect(self) ->None:
+    def disconnect(self) -> None:
         """"主动断开webscoket链接"""
         self._active = False
         ws = self._ws
@@ -867,7 +867,6 @@ class BinanceUsdtTradeWebsocketApi(WebsocketClient):
         """连接断开回报"""
         self.gateway.write_log("交易Websocket API断开")
         self.gateway.rest_api.start_user_stream()
-
 
 
 class BinanceUsdtDataWebsocketApi(WebsocketClient):
