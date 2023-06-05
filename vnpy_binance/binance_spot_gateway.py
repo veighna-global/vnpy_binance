@@ -6,11 +6,13 @@ from copy import copy
 from datetime import datetime, timedelta
 from enum import Enum
 from threading import Lock
-import pytz
 from typing import Any, Dict, List
-from vnpy.trader.utility import round_to
+from asyncio import run_coroutine_threadsafe
+from zoneinfo import ZoneInfo
 
 from requests.exceptions import SSLError
+
+from vnpy.event import Event, EventEngine
 from vnpy.trader.constant import (
     Direction,
     Exchange,
@@ -33,15 +35,14 @@ from vnpy.trader.object import (
     HistoryRequest
 )
 from vnpy.trader.event import EVENT_TIMER
-from vnpy.event import Event, EventEngine
+from vnpy.trader.utility import round_to
+
 from vnpy_rest import RestClient, Request, Response
 from vnpy_websocket import WebsocketClient
-from asyncio import (
-    run_coroutine_threadsafe
-)
+
 
 # 中国时区
-CHINA_TZ = pytz.timezone("Asia/Shanghai")
+CHINA_TZ = ZoneInfo("Asia/Shanghai")
 
 # 实盘REST API地址
 REST_HOST: str = "https://api.binance.com"
@@ -901,5 +902,5 @@ class BinanceSpotDataWebsocketApi(WebsocketClient):
 def generate_datetime(timestamp: float) -> datetime:
     """生成时间"""
     dt: datetime = datetime.fromtimestamp(timestamp / 1000)
-    dt: datetime = CHINA_TZ.localize(dt)
+    dt: datetime = dt.replace(tzinfo=CHINA_TZ)
     return dt
