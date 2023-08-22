@@ -324,7 +324,7 @@ class BinanceUsdtRestApi(RestClient):
         """查询资金"""
         data: dict = {"security": Security.SIGNED}
 
-        path: str = "/fapi/v1/account"
+        path: str = "/fapi/v2/account"
 
         self.add_request(
             method="GET",
@@ -337,7 +337,7 @@ class BinanceUsdtRestApi(RestClient):
         """查询持仓"""
         data: dict = {"security": Security.SIGNED}
 
-        path: str = "/fapi/v1/positionRisk"
+        path: str = "/fapi/v2/positionRisk"
 
         self.add_request(
             method="GET",
