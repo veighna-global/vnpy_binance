@@ -104,6 +104,10 @@ TIMEDELTA_MAP: Dict[Interval, timedelta] = {
     Interval.DAILY: timedelta(days=1),
 }
 
+# Weboscket超时设置为24小时
+WEBSOCKET_TIMEOUT = 24 * 60 * 60
+
+
 # 合约数据全局缓存字典
 symbol_contract_map: Dict[str, ContractData] = {}
 
@@ -751,7 +755,7 @@ class BinanceUsdtTradeWebsocketApi(WebsocketClient):
 
     def connect(self, url: str, proxy_host: str, proxy_port: int) -> None:
         """连接Websocket交易频道"""
-        self.init(url, proxy_host, proxy_port)
+        self.init(url, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
         self.start()
 
     def on_connected(self) -> None:
@@ -888,9 +892,9 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
     ) -> None:
         """连接Websocket行情频道"""
         if server == "REAL":
-            self.init(F_WEBSOCKET_DATA_HOST, proxy_host, proxy_port)
+            self.init(F_WEBSOCKET_DATA_HOST, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
         else:
-            self.init(F_TESTNET_WEBSOCKET_DATA_HOST, proxy_host, proxy_port)
+            self.init(F_TESTNET_WEBSOCKET_DATA_HOST, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
 
         self.start()
 
