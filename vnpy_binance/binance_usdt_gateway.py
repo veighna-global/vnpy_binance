@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Tuple
 from asyncio import run_coroutine_threadsafe
 from time import sleep
 
-from requests.exceptions import SSLError
+from aiohttp import ClientSSLError
 
 from vnpy.event import Event, EventEngine
 from vnpy.trader.constant import (
@@ -619,15 +619,13 @@ class BinanceUsdtRestApi(RestClient):
         msg: str = f"委托失败，状态码：{status_code}，信息：{request.response.text}"
         self.gateway.write_log(msg)
 
-    def on_send_order_error(
-        self, exception_type: type, exception_value: Exception, tb, request: Request
-    ) -> None:
+    def on_send_order_error(self, exception_type: type, exception_value: Exception, tb, request: Request) -> None:
         """委托下单回报函数报错回报"""
         order: OrderData = request.extra
         order.status = Status.REJECTED
         self.gateway.on_order(order)
 
-        if not issubclass(exception_type, (ConnectionError, SSLError)):
+        if not issubclass(exception_type, (ConnectionError, ClientSSLError)):
             self.on_error(exception_type, exception_value, tb, request)
 
     def on_cancel_order(self, data: dict, request: Request) -> None:
