@@ -14,6 +14,7 @@ from enum import Enum
 from threading import Lock
 from typing import Any, Dict, List, Tuple
 from asyncio import run_coroutine_threadsafe
+from time import sleep
 
 from requests.exceptions import SSLError
 
@@ -739,6 +740,9 @@ class BinanceUsdtRestApi(RestClient):
                 # 更新开始时间
                 start_dt = bar.datetime + TIMEDELTA_MAP[req.interval]
                 start_time = int(datetime.timestamp(start_dt))
+
+            # Wait to meet request flow limit
+            sleep(0.3)
 
         return history
 
