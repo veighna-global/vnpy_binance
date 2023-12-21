@@ -1,9 +1,3 @@
-"""
-1. 只支持全仓模式
-2. 只支持单向持仓模式
-3. 只支持正向合约
-"""
-
 import urllib
 import hashlib
 import hmac
@@ -15,6 +9,7 @@ from threading import Lock
 from typing import Any, Dict, List, Tuple
 from asyncio import run_coroutine_threadsafe
 from time import sleep
+from collections import defaultdict
 
 from aiohttp import ClientSSLError
 
@@ -39,9 +34,11 @@ from vnpy.trader.object import (
     OrderRequest,
     CancelRequest,
     SubscribeRequest,
-    HistoryRequest
+    HistoryRequest,
+    TickTrade,
+    TickBook
 )
-from vnpy.trader.event import EVENT_TIMER
+from vnpy.trader.event import EVENT_TIMER, EVENT_TICK_BOOK, EVENT_TICK_TRADE
 from vnpy.trader.utility import round_to, ZoneInfo
 
 from vnpy_rest import Request, RestClient, Response
@@ -146,6 +143,7 @@ class BinanceUsdtGateway(BaseGateway):
         self.rest_api: "BinanceUsdtRestApi" = BinanceUsdtRestApi(self)
 
         self.orders: Dict[str, OrderData] = {}
+        self.books: dict[str, TickBook] = {}
 
     def connect(self, setting: dict) -> None:
         """连接交易接口"""
@@ -202,6 +200,16 @@ class BinanceUsdtGateway(BaseGateway):
     def get_order(self, orderid: str) -> OrderData:
         """查询委托数据"""
         return self.orders.get(orderid, None)
+
+    def get_book(self, vt_symbol: str) -> TickBook:
+        """Get order book"""
+        tick_book: TickBook = self.books.get(vt_symbol, None)
+
+        if not tick_book:
+            tick_book: TickBook = TickBook(vt_symbol)
+            self.books[vt_symbol] = tick_book
+
+        return tick_book
 
 
 class BinanceUsdtRestApi(RestClient):
@@ -744,6 +752,39 @@ class BinanceUsdtRestApi(RestClient):
 
         return history
 
+    def query_depth(self, req: SubscribeRequest, limit: int = 1000) -> None:
+        """Query order book depth."""
+        data: dict = {"security": Security.NONE}
+
+        params: dict = {
+            "symbol": req.symbol,
+            "limit": limit
+        }
+
+        path: str = "/fapi/v1/depth"
+
+        self.add_request(
+            method="GET",
+            path=path,
+            callback=self.on_query_depth,
+            params=params,
+            data=data,
+            extra=req.vt_symbol
+        )
+
+    def on_query_depth(self, data: dict, request: Request) -> None:
+        """Query order book depth callback."""
+        vt_symbol: str = request.extra
+        tick_book: TickBook = self.gateway.get_book(vt_symbol)
+
+        for price_str, volume_str in data["bids"]:
+            tick_book.update_bid(float(price_str), float(volume_str))
+
+        for price_str, volume_str in data["asks"]:
+            tick_book.update_ask(float(price_str), float(volume_str))
+
+        tick_book.update_sequence(data["lastUpdateId"])
+
 
 class BinanceUsdtTradeWebsocketApi(WebsocketClient):
     """币安正向合约的交易Websocket API"""
@@ -886,6 +927,8 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
         self.ticks: Dict[str, TickData] = {}
         self.reqid: int = 0
 
+        self.depth_streams: dict[str, list] = defaultdict(list)
+
     def connect(
         self,
         proxy_host: str,
@@ -941,7 +984,9 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
 
         channels = [
             f"{req.symbol.lower()}@ticker",
-            f"{req.symbol.lower()}@depth5"
+            f"{req.symbol.lower()}@depth5",
+            f"{req.symbol.lower()}@depth",
+            f"{req.symbol.lower()}@aggTrade",
         ]
 
         req: dict = {
@@ -954,39 +999,107 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
     def on_packet(self, packet: dict) -> None:
         """推送数据回报"""
         stream: str = packet.get("stream", None)
-
         if not stream:
             return
 
-        data: dict = packet["data"]
-
-        symbol, channel = stream.split("@")
-        tick: TickData = self.ticks[symbol]
+        _, channel = stream.split("@")
 
         if channel == "ticker":
-            tick.volume = float(data['v'])
-            tick.turnover = float(data['q'])
-            tick.open_price = float(data['o'])
-            tick.high_price = float(data['h'])
-            tick.low_price = float(data['l'])
-            tick.last_price = float(data['c'])
-            tick.datetime = generate_datetime(float(data['E']))
-        else:
-            bids: list = data["b"]
-            for n in range(min(5, len(bids))):
-                price, volume = bids[n]
-                tick.__setattr__("bid_price_" + str(n + 1), float(price))
-                tick.__setattr__("bid_volume_" + str(n + 1), float(volume))
+            self.on_ticker(packet)
+        elif channel == "depth5":
+            self.on_depth5(packet)
+        elif channel == "depth":
+            self.on_depth(packet)
+        elif channel == "aggTrade":
+            self.on_aggregate_trade(packet)
 
-            asks: list = data["a"]
-            for n in range(min(5, len(asks))):
-                price, volume = asks[n]
-                tick.__setattr__("ask_price_" + str(n + 1), float(price))
-                tick.__setattr__("ask_volume_" + str(n + 1), float(volume))
+    def on_ticker(self, packet: dict) -> None:
+        """"""
+        data: dict = packet["data"]
+        symbol: str = data["s"]
+        tick: TickData = self.ticks[symbol.lower()]
+
+        tick.volume = float(data['v'])
+        tick.turnover = float(data['q'])
+        tick.open_price = float(data['o'])
+        tick.high_price = float(data['h'])
+        tick.low_price = float(data['l'])
+        tick.last_price = float(data['c'])
+        tick.datetime = generate_datetime(float(data['E']))
+
+        tick.localtime = datetime.now()
+        self.gateway.on_tick(copy(tick))
+
+    def on_depth5(self, packet: dict) -> None:
+        """"""
+        data: dict = packet["data"]
+        symbol: str = data["s"]
+        tick: TickData = self.ticks[symbol.lower()]
+
+        bids: list = data["b"]
+        for n in range(min(5, len(bids))):
+            price, volume = bids[n]
+            tick.__setattr__("bid_price_" + str(n + 1), float(price))
+            tick.__setattr__("bid_volume_" + str(n + 1), float(volume))
+
+        asks: list = data["a"]
+        for n in range(min(5, len(asks))):
+            price, volume = asks[n]
+            tick.__setattr__("ask_price_" + str(n + 1), float(price))
+            tick.__setattr__("ask_volume_" + str(n + 1), float(volume))
 
         if tick.last_price:
             tick.localtime = datetime.now()
             self.gateway.on_tick(copy(tick))
+
+    def on_depth(self, packet: dict) -> None:
+        """"""
+        data: dict = packet["data"]
+        symbol: str = data["s"]
+        vt_symbol: str = f"{symbol}.BINANCE"
+
+        self.depth_streams[vt_symbol].append(data)
+
+        tick_book: TickBook = self.gateway.get_book(vt_symbol)
+        if not tick_book.sequence_id:
+            return
+
+        streams: list[dict] = self.depth_streams.pop(vt_symbol, [])
+        for data in streams:
+            last_update: int = data["u"]
+            if last_update < tick_book.sequence_id:
+                continue
+
+            for price_str, volume_str in data["b"]:
+                tick_book.update_bid(float(price_str), float(volume_str))
+
+            for price_str, volume_str in data["a"]:
+                tick_book.update_ask(float(price_str), float(volume_str))
+
+            tick_book.update_sequence(last_update)
+
+        self.gateway.on_event(EVENT_TICK_BOOK, tick_book)
+
+    def on_aggregate_trade(self, packet: dict) -> None:
+        """"""
+        data: dict = packet["data"]
+        symbol: str = data["s"]
+
+        if data["m"]:
+            direction: Direction = Direction.SHORT
+        else:
+            direction: Direction = Direction.LONG
+
+        tick_trade: TickTrade = TickTrade(
+            symbol=symbol,
+            exchange=Exchange.BINANCE,
+            price=float(data["p"]),
+            volume=float(data["q"]),
+            direction=direction,
+            datetime=generate_datetime(float(data["T"])),
+            gateway_name=self.gateway_name
+        )
+        self.gateway.on_event(EVENT_TICK_TRADE, tick_trade)
 
     def on_disconnected(self) -> None:
         """连接断开回报"""
