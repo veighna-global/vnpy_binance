@@ -344,6 +344,10 @@ class BinanceSpotRestAPi(RestClient):
         with self.order_count_lock:
             self.order_count += 1
             return self.order_count
+    
+    def format_quantity(self, volume) -> str:
+        v = format(volume, "f")
+        return v.rstrip("0").rstrip(".")
 
     def send_order(self, req: OrderRequest) -> str:
         """委托下单"""
@@ -366,7 +370,7 @@ class BinanceSpotRestAPi(RestClient):
             "symbol": req.symbol.upper(),
             "side": DIRECTION_VT2BINANCE[req.direction],
             "type": ORDERTYPE_VT2BINANCE[req.type],
-            "quantity": format(req.volume, "f"),
+            "quantity": self.format_quantity(req.volume),
             "newClientOrderId": orderid,
             "newOrderRespType": "ACK"
         }
