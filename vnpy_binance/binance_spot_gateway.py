@@ -352,7 +352,12 @@ class BinanceSpotRestAPi(RestClient):
         with self.order_count_lock:
             self.order_count += 1
             return self.order_count
-
+            
+    def format_quantity(self, volume) -> str:
+        """清理Float数中的.0，避免在下单金额较小的币种时出现code:-1111, Parameter 'quantity' has too much precision"""
+        v = format(volume, "f")
+        return v.rstrip("0").rstrip(".")
+        
     def send_order(self, req: OrderRequest) -> str:
         """委托下单"""
         # 生成本地委托号
@@ -374,7 +379,7 @@ class BinanceSpotRestAPi(RestClient):
             "symbol": req.symbol.upper(),
             "side": DIRECTION_VT2BINANCE[req.direction],
             "type": ORDERTYPE_VT2BINANCE[req.type],
-            "quantity": format(req.volume, "f"),
+            "quantity": self.format_quantity(req.volume),
             "newClientOrderId": orderid,
             "newOrderRespType": "ACK"
         }
