@@ -45,6 +45,10 @@ from vnpy.event import Event, EventEngine
 from vnpy_rest import Request, RestClient, Response
 from vnpy_websocket import WebsocketClient
 
+import numpy as np
+
+def format_float(num):
+    return np.format_float_positional(num, trim='-')
 
 # 中国时区
 CHINA_TZ = pytz.timezone("Asia/Shanghai")
@@ -397,7 +401,7 @@ class BinanceUsdtRestApi(RestClient):
         params: dict = {
             "symbol": req.symbol,
             "side": DIRECTION_VT2BINANCES[req.direction],
-            "quantity": float(req.volume),
+            "quantity": format_float(req.volume),
             "newClientOrderId": orderid,
         }
 
@@ -407,7 +411,7 @@ class BinanceUsdtRestApi(RestClient):
             order_type, time_condition = ORDERTYPE_VT2BINANCES[req.type]
             params["type"] = order_type
             params["timeInForce"] = time_condition
-            params["price"] = float(req.price)
+            params["price"] = format_float(req.price)
 
         path: str = "/fapi/v1/order"
 

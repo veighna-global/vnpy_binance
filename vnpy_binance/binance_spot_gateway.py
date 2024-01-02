@@ -9,6 +9,7 @@ from threading import Lock
 import pytz
 from typing import Any, Dict, List
 from vnpy.trader.utility import round_to
+import numpy as np
 
 from requests.exceptions import SSLError
 from vnpy.trader.constant import (
@@ -345,9 +346,10 @@ class BinanceSpotRestAPi(RestClient):
             self.order_count += 1
             return self.order_count
     
-    def format_quantity(self, volume) -> str:
-        v = format(volume, "f")
-        return v.rstrip("0").rstrip(".")
+    def format_float(self, f) -> str:
+        return np.format_float_positional(f, trim='-')
+        # v = format(volume, "f")
+        # return v.rstrip("0").rstrip(".")
 
     def send_order(self, req: OrderRequest) -> str:
         """委托下单"""
@@ -370,15 +372,15 @@ class BinanceSpotRestAPi(RestClient):
             "symbol": req.symbol.upper(),
             "side": DIRECTION_VT2BINANCE[req.direction],
             "type": ORDERTYPE_VT2BINANCE[req.type],
-            "quantity": self.format_quantity(req.volume),
+            "quantity": self.format_float(req.volume),
             "newClientOrderId": orderid,
             "newOrderRespType": "ACK"
         }
 
         if req.type == OrderType.LIMIT:
             params["timeInForce"] = "GTC"
-            params["price"] = str(req.price)
-
+            params["price"] = self.format_float(req.price)
+        
         self.add_request(
             method="POST",
             path="/api/v3/order",
