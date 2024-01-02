@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from threading import Lock
 from typing import Any, Dict, List
+import numpy as np
 from asyncio import run_coroutine_threadsafe
 from zoneinfo import ZoneInfo
 
@@ -353,10 +354,9 @@ class BinanceSpotRestAPi(RestClient):
             self.order_count += 1
             return self.order_count
             
-    def format_quantity(self, volume) -> str:
+    def format_float(self, f) -> str:
         """清理Float数中的.0，避免在下单金额较小的币种时出现code:-1111, Parameter 'quantity' has too much precision"""
-        v = format(volume, "f")
-        return v.rstrip("0").rstrip(".")
+        return np.format_float_positional(f, trim='-')
         
     def send_order(self, req: OrderRequest) -> str:
         """委托下单"""
@@ -379,17 +379,17 @@ class BinanceSpotRestAPi(RestClient):
             "symbol": req.symbol.upper(),
             "side": DIRECTION_VT2BINANCE[req.direction],
             "type": ORDERTYPE_VT2BINANCE[req.type],
-            "quantity": self.format_quantity(req.volume),
+            "quantity": self.format_float(req.volume),
             "newClientOrderId": orderid,
             "newOrderRespType": "ACK"
         }
 
         if req.type == OrderType.LIMIT:
             params["timeInForce"] = "GTC"
-            params["price"] = str(req.price)
+            params["price"] = self.format_float(req.price)
         elif req.type == OrderType.STOP:
             params["type"] = "STOP_MARKET"
-            params["stopPrice"] = float(req.price)
+            params["stopPrice"] = self.format_float(req.price)
 
         self.add_request(
             method="POST",
