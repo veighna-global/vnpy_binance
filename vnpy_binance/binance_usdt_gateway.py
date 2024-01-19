@@ -49,7 +49,7 @@ from vnpy_websocket import WebsocketClient
 
 
 # 中国时区
-CHINA_TZ = ZoneInfo("Asia/Shanghai")
+UTC_TZ = ZoneInfo("UTC")
 
 # 实盘正向合约REST API地址
 F_REST_HOST: str = "https://fapi.binance.com"
@@ -934,7 +934,7 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
             symbol=req.symbol,
             name=symbol_contract_map[req.symbol].name,
             exchange=Exchange.BINANCE,
-            datetime=datetime.now(CHINA_TZ),
+            datetime=datetime.now(UTC_TZ),
             gateway_name=self.gateway_name,
         )
         self.ticks[req.symbol.lower()] = tick
@@ -996,5 +996,5 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
 def generate_datetime(timestamp: float) -> datetime:
     """生成时间"""
     dt: datetime = datetime.fromtimestamp(timestamp / 1000)
-    dt: datetime = dt.replace(tzinfo=CHINA_TZ)
+    dt: datetime = dt.replace(tzinfo=UTC_TZ)
     return dt

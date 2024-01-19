@@ -42,7 +42,7 @@ from vnpy_websocket import WebsocketClient
 
 
 # 中国时区
-CHINA_TZ = ZoneInfo("Asia/Shanghai")
+UTC_TZ = ZoneInfo("UTC")
 
 # 实盘REST API地址
 REST_HOST: str = "https://api.binance.com"
@@ -281,7 +281,7 @@ class BinanceSpotRestAPi(RestClient):
         self.server = server
 
         self.connect_time = (
-            int(datetime.now(CHINA_TZ).strftime("%y%m%d%H%M%S")) * self.order_count
+            int(datetime.now(UTC_TZ ).strftime("%y%m%d%H%M%S")) * self.order_count
         )
 
         if self.server == "REAL":
@@ -841,7 +841,7 @@ class BinanceSpotDataWebsocketApi(WebsocketClient):
             symbol=req.symbol,
             name=symbol_contract_map[req.symbol].name,
             exchange=Exchange.BINANCE,
-            datetime=datetime.now(CHINA_TZ),
+            datetime=datetime.now(UTC_TZ ),
             gateway_name=self.gateway_name,
         )
         self.ticks[req.symbol] = tick
@@ -903,5 +903,5 @@ class BinanceSpotDataWebsocketApi(WebsocketClient):
 def generate_datetime(timestamp: float) -> datetime:
     """生成时间"""
     dt: datetime = datetime.fromtimestamp(timestamp / 1000)
-    dt: datetime = dt.replace(tzinfo=CHINA_TZ)
+    dt: datetime = dt.replace(tzinfo=UTC_TZ )
     return dt
