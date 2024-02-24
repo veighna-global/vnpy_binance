@@ -5,11 +5,13 @@
 </p>
 
 <p align="center">
-    <img src ="https://img.shields.io/badge/version-2021.10.27-blueviolet.svg"/>
+    <img src ="https://img.shields.io/badge/version-2022.4.28-blueviolet.svg"/>
     <img src ="https://img.shields.io/badge/platform-windows|linux|macos-yellow.svg"/>
-    <img src ="https://img.shields.io/badge/python-3.7-blue.svg" />
+    <img src ="https://img.shields.io/badge/python-3.7|3.8|3.9|3.10-blue.svg" />
     <img src ="https://img.shields.io/github/license/vnpy/vnpy.svg?color=orange"/>
 </p>
+
+关于使用VeighNa框架进行Crypto交易的话题，新开了一个[Github Discussions论坛](https://github.com/vn-crypto/vnpy_crypto/discussions)，欢迎通过这里来进行讨论交流。
 
 ## 说明
 
@@ -24,7 +26,7 @@
 
 ## 安装
 
-安装需要基于2.7.0版本以上的[VN Studio](https://www.vnpy.com)。
+安装需要基于3.0.0版本以上的[VN Studio](https://www.vnpy.com)。
 
 直接使用pip命令：
 
@@ -43,10 +45,14 @@ python setup.py install
 以脚本方式启动（script/run.py）：
 
 ```
+import vnpy_crypto
+vnpy_crypto.init()
+
 from vnpy.event import EventEngine
 from vnpy.trader.engine import MainEngine
 from vnpy.trader.ui import MainWindow, create_qapp
 
+import vnpy_crypto
 from vnpy_binance import (
     BinanceSpotGateway,
     BinanceUsdtGateway,

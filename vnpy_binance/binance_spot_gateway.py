@@ -6,12 +6,14 @@ from copy import copy
 from datetime import datetime, timedelta
 from enum import Enum
 from threading import Lock
-import pytz
 from typing import Any, Dict, List
-from vnpy.trader.utility import round_to
 import numpy as np
+from asyncio import run_coroutine_threadsafe
+from zoneinfo import ZoneInfo
 
-from requests.exceptions import SSLError
+from aiohttp import ClientSSLError
+
+from vnpy.event import Event, EventEngine
 from vnpy.trader.constant import (
     Direction,
     Exchange,
@@ -34,13 +36,14 @@ from vnpy.trader.object import (
     HistoryRequest
 )
 from vnpy.trader.event import EVENT_TIMER
-from vnpy.event import Event, EventEngine
+from vnpy.trader.utility import round_to
+
 from vnpy_rest import RestClient, Request, Response
 from vnpy_websocket import WebsocketClient
 
 
 # 中国时区
-CHINA_TZ = pytz.timezone("Asia/Shanghai")
+UTC_TZ = ZoneInfo("UTC")
 
 # 实盘REST API地址
 REST_HOST: str = "https://api.binance.com"
@@ -69,7 +72,8 @@ STATUS_BINANCE2VT: Dict[str, Status] = {
 # 委托类型映射
 ORDERTYPE_VT2BINANCE: Dict[OrderType, str] = {
     OrderType.LIMIT: "LIMIT",
-    OrderType.MARKET: "MARKET"
+    OrderType.MARKET: "MARKET",
+    OrderType.STOP:   "STOP_LOSS_LIMIT",
 }
 ORDERTYPE_BINANCE2VT: Dict[str, OrderType] = {v: k for k, v in ORDERTYPE_VT2BINANCE.items()}
 
@@ -94,6 +98,9 @@ TIMEDELTA_MAP: Dict[Interval, timedelta] = {
     Interval.DAILY: timedelta(days=1),
 }
 
+# Weboscket超时设置为24小时
+WEBSOCKET_TIMEOUT = 24 * 60 * 60
+
 # 合约数据全局缓存字典
 symbol_contract_map: Dict[str, ContractData] = {}
 
@@ -110,6 +117,8 @@ class BinanceSpotGateway(BaseGateway):
     vn.py用于对接币安现货账户的交易接口。
     """
 
+    default_name: str = "BINANCE_SPOT"
+
     default_setting: Dict[str, Any] = {
         "key": "",
         "secret": "",
@@ -120,7 +129,7 @@ class BinanceSpotGateway(BaseGateway):
 
     exchanges: Exchange = [Exchange.BINANCE]
 
-    def __init__(self, event_engine: EventEngine, gateway_name: str = "BINANCE_SPOT") -> None:
+    def __init__(self, event_engine: EventEngine, gateway_name: str) -> None:
         """构造函数"""
         super().__init__(event_engine, gateway_name)
 
@@ -274,7 +283,7 @@ class BinanceSpotRestAPi(RestClient):
         self.server = server
 
         self.connect_time = (
-            int(datetime.now(CHINA_TZ).strftime("%y%m%d%H%M%S")) * self.order_count
+            int(datetime.now(UTC_TZ ).strftime("%y%m%d%H%M%S")) * self.order_count
         )
 
         if self.server == "REAL":
@@ -345,12 +354,12 @@ class BinanceSpotRestAPi(RestClient):
         with self.order_count_lock:
             self.order_count += 1
             return self.order_count
-    
-    def format_float(self, f) -> str:
-        return np.format_float_positional(f, trim='-')
-        # v = format(volume, "f")
-        # return v.rstrip("0").rstrip(".")
 
+            
+    def format_float(self, f) -> str:
+        """清理Float数中的.0，避免在下单金额较小的币种时出现code:-1111, Parameter 'quantity' has too much precision"""
+        return np.format_float_positional(f, trim='-')
+        
     def send_order(self, req: OrderRequest) -> str:
         """委托下单"""
         # 生成本地委托号
@@ -380,7 +389,13 @@ class BinanceSpotRestAPi(RestClient):
         if req.type == OrderType.LIMIT:
             params["timeInForce"] = "GTC"
             params["price"] = self.format_float(req.price)
-        
+
+        elif req.type == OrderType.STOP:
+            params["type"] = "STOP_LOSS_LIMIT"
+            params["stopPrice"] = self.format_float(req.price)
+            params["timeInForce"] = "GTC"
+            params["price"] = self.format_float(req.price)
+            
         self.add_request(
             method="POST",
             path="/api/v3/order",
@@ -525,6 +540,7 @@ class BinanceSpotRestAPi(RestClient):
                 product=Product.SPOT,
                 history_data=True,
                 gateway_name=self.gateway_name,
+                stop_supported=True
             )
             self.gateway.on_contract(contract)
 
@@ -545,15 +561,13 @@ class BinanceSpotRestAPi(RestClient):
         msg: str = f"委托失败，状态码：{status_code}，信息：{request.response.text}"
         self.gateway.write_log(msg)
 
-    def on_send_order_error(
-        self, exception_type: type, exception_value: Exception, tb, request: Request
-    ) -> None:
+    def on_send_order_error(self, exception_type: type, exception_value: Exception, tb, request: Request) -> None:
         """委托下单回报函数报错回报"""
         order: OrderData = request.extra
         order.status = Status.REJECTED
         self.gateway.on_order(order)
 
-        if not issubclass(exception_type, (ConnectionError, SSLError)):
+        if not issubclass(exception_type, (ConnectionError, ClientSSLError)):
             self.on_error(exception_type, exception_value, tb, request)
 
     def on_cancel_order(self, data: dict, request: Request) -> None:
@@ -680,7 +694,7 @@ class BinanceSpotTradeWebsocketApi(WebsocketClient):
 
     def connect(self, url: str, proxy_host: int, proxy_port: int) -> None:
         """连接Websocket交易频道"""
-        self.init(url, proxy_host, proxy_port)
+        self.init(url, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
         self.start()
 
     def on_connected(self) -> None:
@@ -693,6 +707,21 @@ class BinanceSpotTradeWebsocketApi(WebsocketClient):
             self.on_account(packet)
         elif packet["e"] == "executionReport":
             self.on_order(packet)
+        elif packet["e"] == "listenKeyExpired":
+            self.on_listen_key_expired()
+
+    def on_listen_key_expired(self) -> None:
+        """ListenKey过期"""
+        self.gateway.write_log("listenKey过期")
+        self.disconnect()
+
+    def disconnect(self) -> None:
+        """"主动断开webscoket链接"""
+        self._active = False
+        ws = self._ws
+        if ws:
+            coro = ws.close()
+            run_coroutine_threadsafe(coro, self._loop)
 
     def on_account(self, packet: dict) -> None:
         """资金更新推送"""
@@ -718,6 +747,8 @@ class BinanceSpotTradeWebsocketApi(WebsocketClient):
         else:
             orderid: str = packet["C"]
 
+        offset = self.gateway.get_order(orderid).offset if self.gateway.get_order(orderid) else None
+
         order: OrderData = OrderData(
             symbol=packet["s"].lower(),
             exchange=Exchange.BINANCE,
@@ -729,7 +760,8 @@ class BinanceSpotTradeWebsocketApi(WebsocketClient):
             traded=float(packet["z"]),
             status=STATUS_BINANCE2VT[packet["X"]],
             datetime=generate_datetime(packet["O"]),
-            gateway_name=self.gateway_name
+            gateway_name=self.gateway_name,
+            offset=offset
         )
 
         self.gateway.on_order(order)
@@ -753,8 +785,14 @@ class BinanceSpotTradeWebsocketApi(WebsocketClient):
             volume=trade_volume,
             datetime=generate_datetime(packet["T"]),
             gateway_name=self.gateway_name,
+            offset=offset
         )
         self.gateway.on_trade(trade)
+
+    def on_disconnected(self) -> None:
+        """连接断开回报"""
+        self.gateway.write_log("交易Websocket API断开")
+        self.gateway.rest_api.start_user_stream()
 
 
 class BinanceSpotDataWebsocketApi(WebsocketClient):
@@ -773,9 +811,9 @@ class BinanceSpotDataWebsocketApi(WebsocketClient):
     def connect(self, proxy_host: str, proxy_port: int, server: str):
         """连接Websocket行情频道"""
         if server == "REAL":
-            self.init(WEBSOCKET_DATA_HOST, proxy_host, proxy_port)
+            self.init(WEBSOCKET_DATA_HOST, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
         else:
-            self.init(TESTNET_WEBSOCKET_DATA_HOST, proxy_host, proxy_port)
+            self.init(TESTNET_WEBSOCKET_DATA_HOST, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
 
         self.start()
 
@@ -813,7 +851,7 @@ class BinanceSpotDataWebsocketApi(WebsocketClient):
             symbol=req.symbol,
             name=symbol_contract_map[req.symbol].name,
             exchange=Exchange.BINANCE,
-            datetime=datetime.now(CHINA_TZ),
+            datetime=datetime.now(UTC_TZ ),
             gateway_name=self.gateway_name,
         )
         self.ticks[req.symbol] = tick
@@ -867,9 +905,13 @@ class BinanceSpotDataWebsocketApi(WebsocketClient):
             tick.localtime = datetime.now()
             self.gateway.on_tick(copy(tick))
 
+    def on_disconnected(self) -> None:
+        """连接断开回报"""
+        self.gateway.write_log("行情Websocket API断开")
+
 
 def generate_datetime(timestamp: float) -> datetime:
     """生成时间"""
     dt: datetime = datetime.fromtimestamp(timestamp / 1000)
-    dt: datetime = CHINA_TZ.localize(dt)
+    dt: datetime = dt.replace(tzinfo=UTC_TZ )
     return dt

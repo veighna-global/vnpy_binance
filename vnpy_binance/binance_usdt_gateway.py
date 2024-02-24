@@ -13,10 +13,12 @@ from datetime import datetime, timedelta
 from enum import Enum
 from threading import Lock
 from typing import Any, Dict, List, Tuple
-from vnpy.trader.utility import round_to
-import pytz
+from asyncio import run_coroutine_threadsafe
+from time import sleep
 
-from requests.exceptions import SSLError
+from aiohttp import ClientSSLError
+
+from vnpy.event import Event, EventEngine
 from vnpy.trader.constant import (
     Direction,
     Exchange,
@@ -40,7 +42,7 @@ from vnpy.trader.object import (
     HistoryRequest
 )
 from vnpy.trader.event import EVENT_TIMER
-from vnpy.event import Event, EventEngine
+from vnpy.trader.utility import round_to, ZoneInfo
 
 from vnpy_rest import Request, RestClient, Response
 from vnpy_websocket import WebsocketClient
@@ -51,7 +53,7 @@ def format_float(num):
     return np.format_float_positional(num, trim='-')
 
 # 中国时区
-CHINA_TZ = pytz.timezone("Asia/Shanghai")
+UTC_TZ = ZoneInfo("UTC")
 
 # 实盘正向合约REST API地址
 F_REST_HOST: str = "https://fapi.binance.com"
@@ -107,6 +109,10 @@ TIMEDELTA_MAP: Dict[Interval, timedelta] = {
     Interval.DAILY: timedelta(days=1),
 }
 
+# Weboscket超时设置为24小时
+WEBSOCKET_TIMEOUT = 24 * 60 * 60
+
+
 # 合约数据全局缓存字典
 symbol_contract_map: Dict[str, ContractData] = {}
 
@@ -123,6 +129,8 @@ class BinanceUsdtGateway(BaseGateway):
     vn.py用于对接币安正向合约的交易接口。
     """
 
+    default_name: str = "BINANCE_USDT"
+
     default_setting: Dict[str, Any] = {
         "key": "",
         "secret": "",
@@ -133,7 +141,7 @@ class BinanceUsdtGateway(BaseGateway):
 
     exchanges: Exchange = [Exchange.BINANCE]
 
-    def __init__(self, event_engine: EventEngine, gateway_name: str = "BINANCE_USDT") -> None:
+    def __init__(self, event_engine: EventEngine, gateway_name: str) -> None:
         """构造函数"""
         super().__init__(event_engine, gateway_name)
 
@@ -325,7 +333,7 @@ class BinanceUsdtRestApi(RestClient):
         """查询资金"""
         data: dict = {"security": Security.SIGNED}
 
-        path: str = "/fapi/v1/account"
+        path: str = "/fapi/v2/account"
 
         self.add_request(
             method="GET",
@@ -338,7 +346,7 @@ class BinanceUsdtRestApi(RestClient):
         """查询持仓"""
         data: dict = {"security": Security.SIGNED}
 
-        path: str = "/fapi/v1/positionRisk"
+        path: str = "/fapi/v2/positionRisk"
 
         self.add_request(
             method="GET",
@@ -407,6 +415,9 @@ class BinanceUsdtRestApi(RestClient):
 
         if req.type == OrderType.MARKET:
             params["type"] = "MARKET"
+        elif req.type == OrderType.STOP:
+            params["type"] = "STOP_MARKET"
+            params["stopPrice"] = float(req.price)
         else:
             order_type, time_condition = ORDERTYPE_VT2BINANCES[req.type]
             params["type"] = order_type
@@ -591,6 +602,7 @@ class BinanceUsdtRestApi(RestClient):
                 net_position=True,
                 history_data=True,
                 gateway_name=self.gateway_name,
+                stop_supported=True
             )
             self.gateway.on_contract(contract)
 
@@ -611,15 +623,13 @@ class BinanceUsdtRestApi(RestClient):
         msg: str = f"委托失败，状态码：{status_code}，信息：{request.response.text}"
         self.gateway.write_log(msg)
 
-    def on_send_order_error(
-        self, exception_type: type, exception_value: Exception, tb, request: Request
-    ) -> None:
+    def on_send_order_error(self, exception_type: type, exception_value: Exception, tb, request: Request) -> None:
         """委托下单回报函数报错回报"""
         order: OrderData = request.extra
         order.status = Status.REJECTED
         self.gateway.on_order(order)
 
-        if not issubclass(exception_type, (ConnectionError, SSLError)):
+        if not issubclass(exception_type, (ConnectionError, ClientSSLError)):
             self.on_error(exception_type, exception_value, tb, request)
 
     def on_cancel_order(self, data: dict, request: Request) -> None:
@@ -733,6 +743,9 @@ class BinanceUsdtRestApi(RestClient):
                 start_dt = bar.datetime + TIMEDELTA_MAP[req.interval]
                 start_time = int(datetime.timestamp(start_dt))
 
+            # Wait to meet request flow limit
+            sleep(0.3)
+
         return history
 
 
@@ -748,7 +761,7 @@ class BinanceUsdtTradeWebsocketApi(WebsocketClient):
 
     def connect(self, url: str, proxy_host: str, proxy_port: int) -> None:
         """连接Websocket交易频道"""
-        self.init(url, proxy_host, proxy_port)
+        self.init(url, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
         self.start()
 
     def on_connected(self) -> None:
@@ -761,6 +774,21 @@ class BinanceUsdtTradeWebsocketApi(WebsocketClient):
             self.on_account(packet)
         elif packet["e"] == "ORDER_TRADE_UPDATE":
             self.on_order(packet)
+        elif packet["e"] == "listenKeyExpired":
+            self.on_listen_key_expired()
+
+    def on_listen_key_expired(self) -> None:
+        """ListenKey过期"""
+        self.gateway.write_log("listenKey过期")
+        self.disconnect()
+
+    def disconnect(self) -> None:
+        """"主动断开webscoket链接"""
+        self._active = False
+        ws = self._ws
+        if ws:
+            coro = ws.close()
+            run_coroutine_threadsafe(coro, self._loop)
 
     def on_account(self, packet: dict) -> None:
         """资金更新推送"""
@@ -801,6 +829,7 @@ class BinanceUsdtTradeWebsocketApi(WebsocketClient):
         order_type: OrderType = ORDERTYPE_BINANCES2VT.get(key, None)
         if not order_type:
             return
+        offset = self.gateway.get_order(ord_data["c"]).offset if self.gateway.get_order(ord_data["c"]) else None
 
         order: OrderData = OrderData(
             symbol=ord_data["s"],
@@ -813,7 +842,8 @@ class BinanceUsdtTradeWebsocketApi(WebsocketClient):
             traded=float(ord_data["z"]),
             status=STATUS_BINANCES2VT[ord_data["X"]],
             datetime=generate_datetime(packet["E"]),
-            gateway_name=self.gateway_name
+            gateway_name=self.gateway_name,
+            offset=offset
         )
 
         self.gateway.on_order(order)
@@ -837,8 +867,14 @@ class BinanceUsdtTradeWebsocketApi(WebsocketClient):
             volume=trade_volume,
             datetime=generate_datetime(ord_data["T"]),
             gateway_name=self.gateway_name,
+            offset=offset
         )
         self.gateway.on_trade(trade)
+
+    def on_disconnected(self) -> None:
+        """连接断开回报"""
+        self.gateway.write_log("交易Websocket API断开")
+        self.gateway.rest_api.start_user_stream()
 
 
 class BinanceUsdtDataWebsocketApi(WebsocketClient):
@@ -862,9 +898,9 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
     ) -> None:
         """连接Websocket行情频道"""
         if server == "REAL":
-            self.init(F_WEBSOCKET_DATA_HOST, proxy_host, proxy_port)
+            self.init(F_WEBSOCKET_DATA_HOST, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
         else:
-            self.init(F_TESTNET_WEBSOCKET_DATA_HOST, proxy_host, proxy_port)
+            self.init(F_TESTNET_WEBSOCKET_DATA_HOST, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
 
         self.start()
 
@@ -902,7 +938,7 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
             symbol=req.symbol,
             name=symbol_contract_map[req.symbol].name,
             exchange=Exchange.BINANCE,
-            datetime=datetime.now(CHINA_TZ),
+            datetime=datetime.now(UTC_TZ),
             gateway_name=self.gateway_name,
         )
         self.ticks[req.symbol.lower()] = tick
@@ -956,9 +992,13 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
             tick.localtime = datetime.now()
             self.gateway.on_tick(copy(tick))
 
+    def on_disconnected(self) -> None:
+        """连接断开回报"""
+        self.gateway.write_log("行情Websocket API断开")
+
 
 def generate_datetime(timestamp: float) -> datetime:
     """生成时间"""
     dt: datetime = datetime.fromtimestamp(timestamp / 1000)
-    dt: datetime = CHINA_TZ.localize(dt)
+    dt: datetime = dt.replace(tzinfo=UTC_TZ)
     return dt
