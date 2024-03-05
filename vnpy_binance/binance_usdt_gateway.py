@@ -6,7 +6,6 @@ from copy import copy
 from datetime import datetime, timedelta
 from enum import Enum
 from threading import Lock
-from typing import Any, Dict, List, Tuple
 from asyncio import run_coroutine_threadsafe
 from time import sleep
 
@@ -56,7 +55,7 @@ F_TESTNET_WEBSOCKET_TRADE_HOST: str = "wss://stream.binancefuture.com/ws/"
 F_TESTNET_WEBSOCKET_DATA_HOST: str = "wss://stream.binancefuture.com/stream"
 
 # Order status map
-STATUS_BINANCES2VT: Dict[str, Status] = {
+STATUS_BINANCES2VT: dict[str, Status] = {
     "NEW": Status.NOTTRADED,
     "PARTIALLY_FILLED": Status.PARTTRADED,
     "FILLED": Status.ALLTRADED,
@@ -66,30 +65,30 @@ STATUS_BINANCES2VT: Dict[str, Status] = {
 }
 
 # Order type map
-ORDERTYPE_VT2BINANCES: Dict[OrderType, Tuple[str, str]] = {
+ORDERTYPE_VT2BINANCES: dict[OrderType, tuple[str, str]] = {
     OrderType.LIMIT: ("LIMIT", "GTC"),
     OrderType.MARKET: ("MARKET", "GTC"),
     OrderType.FAK: ("LIMIT", "IOC"),
     OrderType.FOK: ("LIMIT", "FOK"),
 }
-ORDERTYPE_BINANCES2VT: Dict[Tuple[str, str], OrderType] = {v: k for k, v in ORDERTYPE_VT2BINANCES.items()}
+ORDERTYPE_BINANCES2VT: dict[tuple[str, str], OrderType] = {v: k for k, v in ORDERTYPE_VT2BINANCES.items()}
 
 # Direction map
-DIRECTION_VT2BINANCES: Dict[Direction, str] = {
+DIRECTION_VT2BINANCES: dict[Direction, str] = {
     Direction.LONG: "BUY",
     Direction.SHORT: "SELL"
 }
-DIRECTION_BINANCES2VT: Dict[str, Direction] = {v: k for k, v in DIRECTION_VT2BINANCES.items()}
+DIRECTION_BINANCES2VT: dict[str, Direction] = {v: k for k, v in DIRECTION_VT2BINANCES.items()}
 
 # Kline interval map
-INTERVAL_VT2BINANCES: Dict[Interval, str] = {
+INTERVAL_VT2BINANCES: dict[Interval, str] = {
     Interval.MINUTE: "1m",
     Interval.HOUR: "1h",
     Interval.DAILY: "1d",
 }
 
 # Timedelta map
-TIMEDELTA_MAP: Dict[Interval, timedelta] = {
+TIMEDELTA_MAP: dict[Interval, timedelta] = {
     Interval.MINUTE: timedelta(minutes=1),
     Interval.HOUR: timedelta(hours=1),
     Interval.DAILY: timedelta(days=1),
@@ -100,7 +99,7 @@ WEBSOCKET_TIMEOUT = 24 * 60 * 60
 
 
 # Global dict for contract data
-symbol_contract_map: Dict[str, ContractData] = {}
+symbol_contract_map: dict[str, ContractData] = {}
 
 
 # Authentication level
@@ -120,7 +119,7 @@ class BinanceUsdtGateway(BaseGateway):
 
     default_name: str = "BINANCE_USDT"
 
-    default_setting: Dict[str, Any] = {
+    default_setting: dict = {
         "API Key": "",
         "API Secret": "",
         "Server": ["REAL", "TESTNET"],
@@ -139,7 +138,7 @@ class BinanceUsdtGateway(BaseGateway):
         self.market_ws_api: BinanceUsdtDataWebsocketApi = BinanceUsdtDataWebsocketApi(self)
         self.rest_api: BinanceUsdtRestApi = BinanceUsdtRestApi(self)
 
-        self.orders: Dict[str, OrderData] = {}
+        self.orders: dict[str, OrderData] = {}
 
     def connect(self, setting: dict) -> None:
         """Start server connections"""
@@ -175,7 +174,7 @@ class BinanceUsdtGateway(BaseGateway):
         """Query position data (not necessary since Binance provides websocket update)"""
         pass
 
-    def query_history(self, req: HistoryRequest) -> List[BarData]:
+    def query_history(self, req: HistoryRequest) -> list[BarData]:
         """Query kline history data"""
         return self.rest_api.query_history(req)
 
@@ -544,7 +543,7 @@ class BinanceUsdtRestApi(RestClient):
     def on_query_order(self, data: dict, request: Request) -> None:
         """Callback of open orders query"""
         for d in data:
-            key: Tuple[str, str] = (d["type"], d["timeInForce"])
+            key: tuple[str, str] = (d["type"], d["timeInForce"])
             order_type: OrderType = ORDERTYPE_BINANCES2VT.get(key, None)
             if not order_type:
                 continue
@@ -659,9 +658,9 @@ class BinanceUsdtRestApi(RestClient):
         if not issubclass(exception_type, TimeoutError):
             self.on_error(exception_type, exception_value, tb, request)
 
-    def query_history(self, req: HistoryRequest) -> List[BarData]:
+    def query_history(self, req: HistoryRequest) -> list[BarData]:
         """Query kline history data"""
-        history: List[BarData] = []
+        history: list[BarData] = []
         limit: int = 1500
 
         start_time: int = int(datetime.timestamp(req.start))
@@ -699,7 +698,7 @@ class BinanceUsdtRestApi(RestClient):
                     self.gateway.write_log(msg)
                     break
 
-                buf: List[BarData] = []
+                buf: list[BarData] = []
 
                 for row in data:
                     bar: BarData = BarData(
@@ -818,7 +817,7 @@ class BinanceUsdtTradeWebsocketApi(WebsocketClient):
     def on_order(self, packet: dict) -> None:
         """Callback of order and trade update"""
         ord_data: dict = packet["o"]
-        key: Tuple[str, str] = (ord_data["o"], ord_data["f"])
+        key: tuple[str, str] = (ord_data["o"], ord_data["f"])
         order_type: OrderType = ORDERTYPE_BINANCES2VT.get(key, None)
         if not order_type:
             return
@@ -880,7 +879,7 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
         self.gateway: BinanceUsdtGateway = gateway
         self.gateway_name: str = gateway.gateway_name
 
-        self.ticks: Dict[str, TickData] = {}
+        self.ticks: dict[str, TickData] = {}
         self.reqid: int = 0
         self.kline_stream: bool = False
 
