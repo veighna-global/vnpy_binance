@@ -1,8 +1,3 @@
-"""
-1. Only support crossed position
-2. Only support one-way mode
-"""
-
 import urllib
 import hashlib
 import hmac
@@ -121,17 +116,21 @@ class Security(Enum):
 
 class BinanceUsdtGateway(BaseGateway):
     """
-    vn.py用于对接币安正向合约的交易接口。
+    The Binance USDT trading gateway for VeighNa.
+
+    1. Only support crossed position
+    2. Only support one-way mode
     """
 
     default_name: str = "BINANCE_USDT"
 
     default_setting: Dict[str, Any] = {
-        "key": "",
-        "secret": "",
-        "服务器": ["REAL", "TESTNET"],
-        "代理地址": "",
-        "代理端口": 0,
+        "API Key": "",
+        "API Secret": "",
+        "Server": ["REAL", "TESTNET"],
+        "Kline Stream": ["True", "False"],
+        "Proxy Host": "",
+        "Proxy Port": 0
     }
 
     exchanges: Exchange = [Exchange.BINANCE]
@@ -140,22 +139,23 @@ class BinanceUsdtGateway(BaseGateway):
         """构造函数"""
         super().__init__(event_engine, gateway_name)
 
-        self.trade_ws_api: "BinanceUsdtTradeWebsocketApi" = BinanceUsdtTradeWebsocketApi(self)
-        self.market_ws_api: "BinanceUsdtDataWebsocketApi" = BinanceUsdtDataWebsocketApi(self)
-        self.rest_api: "BinanceUsdtRestApi" = BinanceUsdtRestApi(self)
+        self.trade_ws_api: BinanceUsdtTradeWebsocketApi = BinanceUsdtTradeWebsocketApi(self)
+        self.market_ws_api: BinanceUsdtDataWebsocketApi = BinanceUsdtDataWebsocketApi(self)
+        self.rest_api: BinanceUsdtRestApi = BinanceUsdtRestApi(self)
 
         self.orders: Dict[str, OrderData] = {}
 
     def connect(self, setting: dict) -> None:
         """连接交易接口"""
-        key: str = setting["key"]
-        secret: str = setting["secret"]
-        server: str = setting["服务器"]
-        proxy_host: str = setting["代理地址"]
-        proxy_port: int = setting["代理端口"]
+        key: str = setting["API Key"]
+        secret: str = setting["API Secret"]
+        server: str = setting["Server"]
+        kline_stream: bool = setting["Kline Stream"] == "True"
+        proxy_host: str = setting["Proxy Host"]
+        proxy_port: int = setting["Proxy Port"]
 
         self.rest_api.connect(key, secret, server, proxy_host, proxy_port)
-        self.market_ws_api.connect(proxy_host, proxy_port, server)
+        self.market_ws_api.connect(proxy_host, proxy_port, server, kline_stream)
 
         self.event_engine.register(EVENT_TIMER, self.process_timer_event)
 
@@ -282,7 +282,7 @@ class BinanceUsdtRestApi(RestClient):
         proxy_host: str,
         proxy_port: int
     ) -> None:
-        """连接REST服务器"""
+        """连接RESTSERVER"""
         self.key = key
         self.secret = secret.encode()
         self.proxy_port = proxy_port
@@ -610,7 +610,7 @@ class BinanceUsdtRestApi(RestClient):
         pass
 
     def on_send_order_failed(self, status_code: str, request: Request) -> None:
-        """委托下单失败服务器报错回报"""
+        """委托下单失败SERVER报错回报"""
         order: OrderData = request.extra
         order.status = Status.REJECTED
         self.gateway.on_order(order)
@@ -888,14 +888,18 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
 
         self.ticks: Dict[str, TickData] = {}
         self.reqid: int = 0
+        self.kline_stream: bool = False
 
     def connect(
         self,
         proxy_host: str,
         proxy_port: int,
-        server: str
+        server: str,
+        kline_stream: bool
     ) -> None:
         """连接Websocket行情频道"""
+        self.kline_stream = True
+
         if server == "REAL":
             self.init(F_WEBSOCKET_DATA_HOST, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
         else:
@@ -913,6 +917,9 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
             for symbol in self.ticks.keys():
                 channels.append(f"{symbol}@ticker")
                 channels.append(f"{symbol}@depth5")
+
+                if self.kline_stream:
+                    channels.append(f"{symbol}@kline_1m")
 
             req: dict = {
                 "method": "SUBSCRIBE",
@@ -947,6 +954,9 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
             f"{req.symbol.lower()}@depth5"
         ]
 
+        if self.kline_stream:
+            channels.append(f"{req.symbol.lower()}@kline_1m")
+
         req: dict = {
             "method": "SUBSCRIBE",
             "params": channels,
@@ -974,7 +984,7 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
             tick.low_price = float(data['l'])
             tick.last_price = float(data['c'])
             tick.datetime = generate_datetime(float(data['E']))
-        else:
+        elif channel == "depth5":
             bids: list = data["b"]
             for n in range(min(5, len(bids))):
                 price, volume = bids[n]
@@ -986,6 +996,29 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
                 price, volume = asks[n]
                 tick.__setattr__("ask_price_" + str(n + 1), float(price))
                 tick.__setattr__("ask_volume_" + str(n + 1), float(volume))
+        else:
+            kline_data: dict = data["k"]
+
+            # Check if bar is closed
+            bar_ready: bool = kline_data.get("x", False)
+            if not bar_ready:
+                return
+
+            dt: datetime = generate_datetime(float(kline_data['t']))
+
+            tick.extra["bar"] = BarData(
+                symbol=symbol.upper(),
+                exchange=Exchange.BINANCE,
+                datetime=dt.replace(second=0, microsecond=0),
+                interval=Interval.MINUTE,
+                volume=float(kline_data["v"]),
+                turnover=float(kline_data["q"]),
+                open_price=float(kline_data["o"]),
+                high_price=float(kline_data["h"]),
+                low_price=float(kline_data["l"]),
+                close_price=float(kline_data["c"]),
+                gateway_name=self.gateway_name
+            )
 
         if tick.last_price:
             tick.localtime = datetime.now()
