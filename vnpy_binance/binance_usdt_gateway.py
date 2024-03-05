@@ -131,7 +131,12 @@ class BinanceUsdtGateway(BaseGateway):
     exchanges: Exchange = [Exchange.BINANCE]
 
     def __init__(self, event_engine: EventEngine, gateway_name: str) -> None:
-        """构造函数"""
+        """
+        The init method of the gateway.
+
+        event_engine: the global event engine object of VeighNa
+        gateway_name: the unique name for identifying the gateway
+        """
         super().__init__(event_engine, gateway_name)
 
         self.trade_ws_api: BinanceUsdtTradeWebsocketApi = BinanceUsdtTradeWebsocketApi(self)
@@ -202,7 +207,11 @@ class BinanceUsdtRestApi(RestClient):
     """The REST API of BinanceUsdtGateway"""
 
     def __init__(self, gateway: BinanceUsdtGateway) -> None:
-        """构造函数"""
+        """
+        The init method of the api.
+
+        gateway: the parent gateway object for pushing callback data.
+        """
         super().__init__()
 
         self.gateway: BinanceUsdtGateway = gateway
@@ -255,7 +264,7 @@ class BinanceUsdtRestApi(RestClient):
         request.params = {}
         request.data = {}
 
-        # 添加请求头
+        # Add header to the request
         headers = {
             "Content-Type": "application/x-www-form-urlencoded",
             "Accept": "application/json",
@@ -374,11 +383,11 @@ class BinanceUsdtRestApi(RestClient):
 
     def send_order(self, req: OrderRequest) -> str:
         """Send new order"""
-        # 生成本地委托号
+        # Generate new order id
         self.order_count += 1
         orderid: str = str(self.connect_time + self.order_count)
 
-        # 推送提交中事件
+        # Push a submitting order event
         order: OrderData = req.create_order_data(
             orderid,
             self.gateway_name
@@ -389,7 +398,7 @@ class BinanceUsdtRestApi(RestClient):
             "security": Security.SIGNED
         }
 
-        # 生成委托请求
+        # Create order parameters
         params: dict = {
             "symbol": req.symbol,
             "side": DIRECTION_VT2BINANCES[req.direction],
@@ -648,8 +657,7 @@ class BinanceUsdtRestApi(RestClient):
 
     def on_keep_user_stream_error(self, exception_type: type, exception_value: Exception, tb, request: Request) -> None:
         """Error callback of keep_user_stream"""
-        # 当延长listenKey有效期时，忽略超时报错
-        if not issubclass(exception_type, TimeoutError):
+        if not issubclass(exception_type, TimeoutError):        # Ignore timeout exception
             self.on_error(exception_type, exception_value, tb, request)
 
     def query_history(self, req: HistoryRequest) -> list[BarData]:
@@ -660,7 +668,7 @@ class BinanceUsdtRestApi(RestClient):
         start_time: int = int(datetime.timestamp(req.start))
 
         while True:
-            # 创建查询参数
+            # Create query parameters
             params: dict = {
                 "symbol": req.symbol,
                 "interval": INTERVAL_VT2BINANCES[req.interval],
@@ -680,7 +688,7 @@ class BinanceUsdtRestApi(RestClient):
                 params=params
             )
 
-            # 如果请求失败则终止循环
+            # Break the loop if request failed
             if resp.status_code // 100 != 2:
                 msg: str = f"获取历史数据失败，状态码：{resp.status_code}，信息：{resp.text}"
                 self.gateway.write_log(msg)
@@ -717,11 +725,11 @@ class BinanceUsdtRestApi(RestClient):
                 msg: str = f"获取历史数据成功，{req.symbol} - {req.interval.value}，{begin} - {end}"
                 self.gateway.write_log(msg)
 
-                # 如果收到了最后一批数据则终止循环
+                # Break the loop if the latest data received
                 if len(data) < limit:
                     break
 
-                # 更新开始时间
+                # Update query start time
                 start_dt = bar.datetime + TIMEDELTA_MAP[req.interval]
                 start_time = int(datetime.timestamp(start_dt))
 
@@ -739,7 +747,11 @@ class BinanceUsdtTradeWebsocketApi(WebsocketClient):
     """The trade websocket API of BinanceUsdtGateway"""
 
     def __init__(self, gateway: BinanceUsdtGateway) -> None:
-        """构造函数"""
+        """
+        The init method of the api.
+
+        gateway: the parent gateway object for pushing callback data.
+        """
         super().__init__()
 
         self.gateway: BinanceUsdtGateway = gateway
@@ -834,7 +846,7 @@ class BinanceUsdtTradeWebsocketApi(WebsocketClient):
 
         self.gateway.on_order(order)
 
-        # 将成交数量四舍五入到正确精度
+        # Round trade volume to meet step size
         trade_volume: float = float(ord_data["l"])
         contract: ContractData = symbol_contract_map.get(order.symbol, None)
         if contract:
@@ -867,7 +879,11 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
     """The data websocket API of BinanceUsdtGateway"""
 
     def __init__(self, gateway: BinanceUsdtGateway) -> None:
-        """构造函数"""
+        """
+        The init method of the api.
+
+        gateway: the parent gateway object for pushing callback data.
+        """
         super().__init__()
 
         self.gateway: BinanceUsdtGateway = gateway
@@ -898,7 +914,7 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
         """Callback when server is connected"""
         self.gateway.write_log("行情Websocket API连接成功")
 
-        # 重新订阅行情
+        # Resubscribe market data
         if self.ticks:
             channels = []
             for symbol in self.ticks.keys():
@@ -926,7 +942,7 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
 
         self.reqid += 1
 
-        # 创建TICK对象
+        # Initialize tick object
         tick: TickData = TickData(
             symbol=req.symbol,
             name=symbol_contract_map[req.symbol].name,
