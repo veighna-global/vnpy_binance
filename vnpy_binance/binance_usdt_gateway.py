@@ -739,7 +739,11 @@ class BinanceUsdtRestApi(RestClient):
                 start_time = int(datetime.timestamp(start_dt))
 
             # Wait to meet request flow limit
-            sleep(0.3)
+            sleep(0.5)
+
+        # Remove the unclosed kline
+        if history:
+            history.pop(-1)
 
         return history
 
