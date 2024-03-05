@@ -303,7 +303,7 @@ class BinanceUsdtRestApi(RestClient):
 
         self.start()
 
-        self.gateway.write_log("REST API启动成功")
+        self.gateway.write_log("REST API started")
 
         self.query_time()
         self.query_account()
@@ -517,7 +517,7 @@ class BinanceUsdtRestApi(RestClient):
             if account.balance:
                 self.gateway.on_account(account)
 
-        self.gateway.write_log("账户资金查询成功")
+        self.gateway.write_log("Account balance data is received")
 
     def on_query_position(self, data: dict, request: Request) -> None:
         """Callback of holding positions query"""
@@ -541,7 +541,7 @@ class BinanceUsdtRestApi(RestClient):
 
                 self.gateway.on_position(position)
 
-        self.gateway.write_log("持仓信息查询成功")
+        self.gateway.write_log("Holding positions data is received")
 
     def on_query_order(self, data: dict, request: Request) -> None:
         """Callback of open orders query"""
@@ -566,7 +566,7 @@ class BinanceUsdtRestApi(RestClient):
             )
             self.gateway.on_order(order)
 
-        self.gateway.write_log("委托信息查询成功")
+        self.gateway.write_log("Open orders data is received")
 
     def on_query_contract(self, data: dict, request: Request) -> None:
         """Callback of available contracts query"""
@@ -601,7 +601,7 @@ class BinanceUsdtRestApi(RestClient):
 
             symbol_contract_map[contract.symbol] = contract
 
-        self.gateway.write_log("合约信息查询成功")
+        self.gateway.write_log("Available contracts data is received")
 
     def on_send_order(self, data: dict, request: Request) -> None:
         """Successful callback of send_order"""
@@ -613,7 +613,7 @@ class BinanceUsdtRestApi(RestClient):
         order.status = Status.REJECTED
         self.gateway.on_order(order)
 
-        msg: str = f"委托失败，状态码：{status_code}，信息：{request.response.text}"
+        msg: str = f"Send order failed, status code: {status_code}, message: {request.response.text}"
         self.gateway.write_log(msg)
 
     def on_send_order_error(self, exception_type: type, exception_value: Exception, tb, request: Request) -> None:
@@ -636,7 +636,7 @@ class BinanceUsdtRestApi(RestClient):
             order.status = Status.REJECTED
             self.gateway.on_order(order)
 
-        msg = f"Cancel failed, status code: {status_code}, message: {request.response.text}, order: {request.extra} "
+        msg = f"Cancel orde failed, status code: {status_code}, message: {request.response.text}, order: {request.extra} "
         self.gateway.write_log(msg)
 
     def on_start_user_stream(self, data: dict, request: Request) -> None:
@@ -690,13 +690,13 @@ class BinanceUsdtRestApi(RestClient):
 
             # Break the loop if request failed
             if resp.status_code // 100 != 2:
-                msg: str = f"获取历史数据失败，状态码：{resp.status_code}，信息：{resp.text}"
+                msg: str = f"Query kline history failed, status code: {resp.status_code}, message: {resp.text}"
                 self.gateway.write_log(msg)
                 break
             else:
                 data: dict = resp.json()
                 if not data:
-                    msg: str = f"获取历史数据为空，开始时间：{start_time}"
+                    msg: str = f"No kline history data is received, start time: {start_time}"
                     self.gateway.write_log(msg)
                     break
 
@@ -722,7 +722,7 @@ class BinanceUsdtRestApi(RestClient):
                 end: datetime = buf[-1].datetime
 
                 history.extend(buf)
-                msg: str = f"获取历史数据成功，{req.symbol} - {req.interval.value}，{begin} - {end}"
+                msg: str = f"Query kline history finished, {req.symbol} - {req.interval.value}, {begin} - {end}"
                 self.gateway.write_log(msg)
 
                 # Break the loop if the latest data received
@@ -764,7 +764,7 @@ class BinanceUsdtTradeWebsocketApi(WebsocketClient):
 
     def on_connected(self) -> None:
         """Callback when server is connected"""
-        self.gateway.write_log("交易Websocket API连接成功")
+        self.gateway.write_log("Trade Websocket API is connected")
 
     def on_packet(self, packet: dict) -> None:
         """Callback of data update"""
@@ -777,7 +777,7 @@ class BinanceUsdtTradeWebsocketApi(WebsocketClient):
 
     def on_listen_key_expired(self) -> None:
         """Callback of listen key expired"""
-        self.gateway.write_log("listenKey过期")
+        self.gateway.write_log("Listen key is expired")
         self.disconnect()
 
     def disconnect(self) -> None:
@@ -871,7 +871,7 @@ class BinanceUsdtTradeWebsocketApi(WebsocketClient):
 
     def on_disconnected(self) -> None:
         """Callback when server is disconnected"""
-        self.gateway.write_log("交易Websocket API断开")
+        self.gateway.write_log("Trade Websocket API is disconnected")
         self.gateway.rest_api.start_user_stream()
 
 
@@ -912,7 +912,7 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
 
     def on_connected(self) -> None:
         """Callback when server is connected"""
-        self.gateway.write_log("行情Websocket API连接成功")
+        self.gateway.write_log("Data Websocket API is connected")
 
         # Resubscribe market data
         if self.ticks:
@@ -937,7 +937,7 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
             return
 
         if req.symbol not in symbol_contract_map:
-            self.gateway.write_log(f"找不到该合约代码{req.symbol}")
+            self.gateway.write_log(f"Symbol not found {req.symbol}")
             return
 
         self.reqid += 1
@@ -1029,7 +1029,7 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
 
     def on_disconnected(self) -> None:
         """Callback when server is disconnected"""
-        self.gateway.write_log("行情Websocket API断开")
+        self.gateway.write_log("Data Websocket API is disconnected")
 
 
 def generate_datetime(timestamp: float) -> datetime:
