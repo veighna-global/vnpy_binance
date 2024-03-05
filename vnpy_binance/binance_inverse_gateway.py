@@ -927,7 +927,7 @@ class BinanceInverseDataWebsocketApi(WebsocketClient):
             symbol=req.symbol,
             name=symbol_contract_map[req.symbol].name,
             exchange=Exchange.BINANCE,
-            datetime=datetime.now(UTC_TZ ),
+            datetime=datetime.now(UTC_TZ),
             gateway_name=self.gateway_name,
         )
         self.ticks[req.symbol.lower()] = tick
@@ -989,5 +989,5 @@ class BinanceInverseDataWebsocketApi(WebsocketClient):
 def generate_datetime(timestamp: float) -> datetime:
     """生成时间"""
     dt: datetime = datetime.fromtimestamp(timestamp / 1000)
-    dt: datetime = dt.replace(tzinfo=UTC_TZ )
+    dt: datetime = dt.replace(tzinfo=UTC_TZ)
     return dt

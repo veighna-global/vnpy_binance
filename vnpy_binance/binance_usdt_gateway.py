@@ -1,7 +1,6 @@
 """
-1. 只支持全仓模式
-2. 只支持单向持仓模式
-3. 只支持正向合约
+1. Only support crossed position
+2. Only support one-way mode
 """
 
 import urllib

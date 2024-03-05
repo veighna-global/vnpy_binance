@@ -1,7 +1,3 @@
-# flake8: noqa
-import vnpy_crypto
-vnpy_crypto.init()
-
 from vnpy.event import EventEngine
 from vnpy.trader.engine import MainEngine
 from vnpy.trader.ui import MainWindow, create_qapp
