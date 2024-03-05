@@ -3,11 +3,10 @@ import hashlib
 import hmac
 import time
 from copy import copy
-from datetime import datetime, timedelta
 from enum import Enum
-from threading import Lock
-from asyncio import run_coroutine_threadsafe
 from time import sleep
+from datetime import datetime, timedelta
+from asyncio import run_coroutine_threadsafe
 
 from aiohttp import ClientSSLError
 
@@ -123,7 +122,7 @@ class BinanceUsdtGateway(BaseGateway):
         "API Key": "",
         "API Secret": "",
         "Server": ["REAL", "TESTNET"],
-        "Kline Stream": ["True", "False"],
+        "Kline Stream": ["False", "True"],
         "Proxy Host": "",
         "Proxy Port": 0
     }
@@ -155,7 +154,7 @@ class BinanceUsdtGateway(BaseGateway):
         proxy_port: int = setting["Proxy Port"]
 
         self.rest_api.connect(key, secret, server, proxy_host, proxy_port)
-        self.market_ws_api.connect(proxy_host, proxy_port, server, kline_stream)
+        self.market_ws_api.connect(server, kline_stream, proxy_host, proxy_port)
 
         self.event_engine.register(EVENT_TIMER, self.process_timer_event)
 
@@ -172,11 +171,11 @@ class BinanceUsdtGateway(BaseGateway):
         self.rest_api.cancel_order(req)
 
     def query_account(self) -> None:
-        """Query account data (not necessary since Binance provides websocket update)"""
+        """Not required since Binance provides websocket update"""
         pass
 
     def query_position(self) -> None:
-        """Query position data (not necessary since Binance provides websocket update)"""
+        """Not required since Binance provides websocket update"""
         pass
 
     def query_history(self, req: HistoryRequest) -> list[BarData]:
@@ -224,11 +223,10 @@ class BinanceUsdtRestApi(RestClient):
 
         self.user_stream_key: str = ""
         self.keep_alive_count: int = 0
-        self.recv_window: int = 5000
         self.time_offset: int = 0
 
         self.order_count: int = 1_000_000
-        self.connect_time: int = 0
+        self.order_prefix: int = 0
 
     def sign(self, request: Request) -> Request:
         """Standard callback for signing a request"""
@@ -254,8 +252,11 @@ class BinanceUsdtRestApi(RestClient):
             request.params["timestamp"] = timestamp
 
             query: str = urllib.parse.urlencode(sorted(request.params.items()))
-            signature: bytes = hmac.new(self.secret, query.encode(
-                "utf-8"), hashlib.sha256).hexdigest()
+            signature: bytes = hmac.new(
+                self.secret,
+                query.encode("utf-8"),
+                hashlib.sha256
+            ).hexdigest()
 
             query += "&signature={}".format(signature)
             path: str = request.path + "?" + query
@@ -292,9 +293,7 @@ class BinanceUsdtRestApi(RestClient):
         self.proxy_host = proxy_host
         self.server = server
 
-        self.connect_time = (
-            int(datetime.now().strftime("%y%m%d%H%M%S")) * self.order_count
-        )
+        self.order_prefix = datetime.now().strftime("%y%m%d%H%M%S")
 
         if self.server == "REAL":
             self.init(F_REST_HOST, proxy_host, proxy_port)
@@ -314,13 +313,11 @@ class BinanceUsdtRestApi(RestClient):
 
     def query_time(self) -> None:
         """Query server time"""
-        data: dict = {
-            "security": Security.NONE
-        }
+        data: dict = {"security": Security.NONE}
 
         path: str = "/fapi/v1/time"
 
-        return self.add_request(
+        self.add_request(
             "GET",
             path,
             callback=self.on_query_time,
@@ -368,9 +365,7 @@ class BinanceUsdtRestApi(RestClient):
 
     def query_contract(self) -> None:
         """Query available contracts"""
-        data: dict = {
-            "security": Security.NONE
-        }
+        data: dict = {"security": Security.NONE}
 
         path: str = "/fapi/v1/exchangeInfo"
 
@@ -385,7 +380,7 @@ class BinanceUsdtRestApi(RestClient):
         """Send new order"""
         # Generate new order id
         self.order_count += 1
-        orderid: str = str(self.connect_time + self.order_count)
+        orderid: str = self.order_prefix + str(self.order_count)
 
         # Push a submitting order event
         order: OrderData = req.create_order_data(
@@ -394,9 +389,7 @@ class BinanceUsdtRestApi(RestClient):
         )
         self.gateway.on_order(order)
 
-        data: dict = {
-            "security": Security.SIGNED
-        }
+        data: dict = {"security": Security.SIGNED}
 
         # Create order parameters
         params: dict = {
@@ -434,9 +427,7 @@ class BinanceUsdtRestApi(RestClient):
 
     def cancel_order(self, req: CancelRequest) -> None:
         """Cancel existing order"""
-        data: dict = {
-            "security": Security.SIGNED
-        }
+        data: dict = {"security": Security.SIGNED}
 
         params: dict = {
             "symbol": req.symbol,
@@ -457,11 +448,9 @@ class BinanceUsdtRestApi(RestClient):
             extra=order
         )
 
-    def start_user_stream(self) -> Request:
+    def start_user_stream(self) -> None:
         """Create listen key for user stream"""
-        data: dict = {
-            "security": Security.API_KEY
-        }
+        data: dict = {"security": Security.API_KEY}
 
         path: str = "/fapi/v1/listenKey"
 
@@ -472,20 +461,16 @@ class BinanceUsdtRestApi(RestClient):
             data=data
         )
 
-    def keep_user_stream(self) -> Request:
+    def keep_user_stream(self) -> None:
         """Extend listen key validity"""
         self.keep_alive_count += 1
         if self.keep_alive_count < 600:
             return
         self.keep_alive_count = 0
 
-        data: dict = {
-            "security": Security.API_KEY
-        }
+        data: dict = {"security": Security.API_KEY}
 
-        params: dict = {
-            "listenKey": self.user_stream_key
-        }
+        params: dict = {"listenKey": self.user_stream_key}
 
         path: str = "/fapi/v1/listenKey"
 
@@ -519,7 +504,7 @@ class BinanceUsdtRestApi(RestClient):
 
         self.gateway.write_log("Account balance data is received")
 
-    def on_query_position(self, data: dict, request: Request) -> None:
+    def on_query_position(self, data: list, request: Request) -> None:
         """Callback of holding positions query"""
         for d in data:
             position: PositionData = PositionData(
@@ -543,7 +528,7 @@ class BinanceUsdtRestApi(RestClient):
 
         self.gateway.write_log("Holding positions data is received")
 
-    def on_query_order(self, data: dict, request: Request) -> None:
+    def on_query_order(self, data: list, request: Request) -> None:
         """Callback of open orders query"""
         for d in data:
             key: tuple[str, str] = (d["type"], d["timeInForce"])
@@ -895,13 +880,13 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
 
     def connect(
         self,
+        server: str,
+        kline_stream: bool,
         proxy_host: str,
         proxy_port: int,
-        server: str,
-        kline_stream: bool
     ) -> None:
         """Start server connection"""
-        self.kline_stream = True
+        self.kline_stream = kline_stream
 
         if server == "REAL":
             self.init(F_WEBSOCKET_DATA_HOST, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
