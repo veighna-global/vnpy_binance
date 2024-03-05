@@ -219,7 +219,6 @@ class BinanceUsdtRestApi(RestClient):
         self.time_offset: int = 0
 
         self.order_count: int = 1_000_000
-        self.order_count_lock: Lock = Lock()
         self.connect_time: int = 0
 
     def sign(self, request: Request) -> Request:
@@ -373,16 +372,11 @@ class BinanceUsdtRestApi(RestClient):
             data=data
         )
 
-    def _new_order_id(self) -> int:
-        """Generate a new orderid"""
-        with self.order_count_lock:
-            self.order_count += 1
-            return self.order_count
-
     def send_order(self, req: OrderRequest) -> str:
         """Send new order"""
         # 生成本地委托号
-        orderid: str = str(self.connect_time + self._new_order_id())
+        self.order_count += 1
+        orderid: str = str(self.connect_time + self.order_count)
 
         # 推送提交中事件
         order: OrderData = req.create_order_data(
