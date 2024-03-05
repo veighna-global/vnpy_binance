@@ -632,13 +632,13 @@ class BinanceUsdtRestApi(RestClient):
         pass
 
     def on_cancel_failed(self, status_code: str, request: Request) -> None:
-        """撤单回报函数报错回报"""
+        """Callback of cancel order failure"""
         if request.extra:
             order = request.extra
             order.status = Status.REJECTED
             self.gateway.on_order(order)
 
-        msg = f"撤单失败，状态码：{status_code}，信息：{request.response.text}"
+        msg = f"Cancel failed, status code: {status_code}, message: {request.response.text}, order: {request.extra} "
         self.gateway.write_log(msg)
 
     def on_start_user_stream(self, data: dict, request: Request) -> None:
