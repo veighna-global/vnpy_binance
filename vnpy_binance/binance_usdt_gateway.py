@@ -305,11 +305,13 @@ class BinanceUsdtRestApi(RestClient):
         self.gateway.write_log("REST API started")
 
         self.query_time()
-        self.query_account()
-        self.query_position()
-        self.query_order()
         self.query_contract()
-        self.start_user_stream()
+
+        if key and secret:
+            self.query_account()
+            self.query_position()
+            self.query_order()
+            self.start_user_stream()
 
     def query_time(self) -> None:
         """Query server time"""
