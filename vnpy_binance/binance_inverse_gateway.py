@@ -17,8 +17,8 @@ from asyncio import run_coroutine_threadsafe
 
 from aiohttp import ClientSSLError
 
-from vnpy.event import Event, EventEngine
-from vnpy.trader.constant import (
+from vnpy_crypto.event import Event, EventEngine
+from vnpy_crypto.trader.constant import (
     Direction,
     Exchange,
     Product,
@@ -26,8 +26,8 @@ from vnpy.trader.constant import (
     OrderType,
     Interval
 )
-from vnpy.trader.gateway import BaseGateway
-from vnpy.trader.object import (
+from vnpy_crypto.trader.gateway import BaseGateway
+from vnpy_crypto.trader.object import (
     TickData,
     OrderData,
     TradeData,
@@ -40,8 +40,8 @@ from vnpy.trader.object import (
     SubscribeRequest,
     HistoryRequest
 )
-from vnpy.trader.event import EVENT_TIMER
-from vnpy.trader.utility import round_to, ZoneInfo
+from vnpy_crypto.trader.event import EVENT_TIMER
+from vnpy_crypto.trader.utility import round_to, ZoneInfo
 
 from vnpy_rest import Request, RestClient, Response
 from vnpy_websocket import WebsocketClient
