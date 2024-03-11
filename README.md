@@ -11,7 +11,6 @@
     <img src ="https://img.shields.io/github/license/vnpy/vnpy.svg?color=orange"/>
 </p>
 
-关于使用VeighNa框架进行Crypto交易的话题，新开了一个[Github Discussions论坛](https://github.com/vn-crypto/vnpy_crypto/discussions)，欢迎通过这里来进行讨论交流。
 
 ## 说明
 
@@ -45,14 +44,11 @@ python setup.py install
 以脚本方式启动（script/run.py）：
 
 ```
-import vnpy_crypto
-vnpy_crypto.init()
-
 from vnpy.event import EventEngine
 from vnpy.trader.engine import MainEngine
 from vnpy.trader.ui import MainWindow, create_qapp
 
-import vnpy_crypto
+import vnpy_evo
 from vnpy_binance import (
     BinanceSpotGateway,
     BinanceUsdtGateway,

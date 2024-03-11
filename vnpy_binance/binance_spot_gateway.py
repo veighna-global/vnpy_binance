@@ -12,8 +12,8 @@ from zoneinfo import ZoneInfo
 
 from aiohttp import ClientSSLError
 
-from vnpy_crypto.event import Event, EventEngine
-from vnpy_crypto.trader.constant import (
+from vnpy_evo.event import Event, EventEngine
+from vnpy_evo.trader.constant import (
     Direction,
     Exchange,
     Product,
@@ -21,8 +21,8 @@ from vnpy_crypto.trader.constant import (
     OrderType,
     Interval
 )
-from vnpy_crypto.trader.gateway import BaseGateway
-from vnpy_crypto.trader.object import (
+from vnpy_evo.trader.gateway import BaseGateway
+from vnpy_evo.trader.object import (
     TickData,
     OrderData,
     TradeData,
@@ -34,8 +34,8 @@ from vnpy_crypto.trader.object import (
     SubscribeRequest,
     HistoryRequest
 )
-from vnpy_crypto.trader.event import EVENT_TIMER
-from vnpy_crypto.trader.utility import round_to
+from vnpy_evo.trader.event import EVENT_TIMER
+from vnpy_evo.trader.utility import round_to
 
 from vnpy_rest import RestClient, Request, Response
 from vnpy_websocket import WebsocketClient
