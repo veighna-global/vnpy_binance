@@ -226,7 +226,7 @@ class BinanceUsdtRestApi(RestClient):
         self.time_offset: int = 0
 
         self.order_count: int = 1_000_000
-        self.order_prefix: int = 0
+        self.order_prefix: str = 0
 
     def sign(self, request: Request) -> Request:
         """Standard callback for signing a request"""
