@@ -66,7 +66,8 @@ STATUS_BINANCE2VT: dict[str, Status] = {
 # Order type map
 ORDERTYPE_VT2BINANCE: dict[OrderType, str] = {
     OrderType.LIMIT: "LIMIT",
-    OrderType.MARKET: "MARKET"
+    OrderType.MARKET: "MARKET",
+    OrderType.STOP: "STOP_LOSS"
 }
 ORDERTYPE_BINANCE2VT: dict[str, OrderType] = {v: k for k, v in ORDERTYPE_VT2BINANCE.items()}
 
@@ -379,7 +380,7 @@ class BinanceSpotRestAPi(RestClient):
             params["timeInForce"] = "GTC"
             params["price"] = str(req.price)
         elif req.type == OrderType.STOP:
-            params["type"] = "STOP_MARKET"
+            params["type"] = "STOP_LOSS"
             params["stopPrice"] = float(req.price)
 
         self.add_request(

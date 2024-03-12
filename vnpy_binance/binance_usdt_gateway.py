@@ -666,7 +666,7 @@ class BinanceUsdtRestApi(RestClient):
             path: str = "/fapi/v1/klines"
             if req.end:
                 end_time = int(datetime.timestamp(req.end))
-                params["endTime"] = end_time * 1000     # 转换成毫秒
+                params["endTime"] = end_time * 1000     # Convert to milliseconds
 
             resp: Response = self.request(
                 "GET",
