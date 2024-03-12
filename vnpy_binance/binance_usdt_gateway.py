@@ -906,7 +906,7 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
             channels = []
             for symbol in self.ticks.keys():
                 channels.append(f"{symbol}@ticker")
-                channels.append(f"{symbol}@depth5")
+                channels.append(f"{symbol}@depth10")
 
                 if self.kline_stream:
                     channels.append(f"{symbol}@kline_1m")
@@ -942,7 +942,7 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
 
         channels = [
             f"{req.symbol.lower()}@ticker",
-            f"{req.symbol.lower()}@depth5"
+            f"{req.symbol.lower()}@depth10"
         ]
 
         if self.kline_stream:
@@ -975,15 +975,15 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
             tick.low_price = float(data['l'])
             tick.last_price = float(data['c'])
             tick.datetime = generate_datetime(float(data['E']))
-        elif channel == "depth5":
+        elif channel == "depth10":
             bids: list = data["b"]
-            for n in range(min(5, len(bids))):
+            for n in range(min(10, len(bids))):
                 price, volume = bids[n]
                 tick.__setattr__("bid_price_" + str(n + 1), float(price))
                 tick.__setattr__("bid_volume_" + str(n + 1), float(volume))
 
             asks: list = data["a"]
-            for n in range(min(5, len(asks))):
+            for n in range(min(10, len(asks))):
                 price, volume = asks[n]
                 tick.__setattr__("ask_price_" + str(n + 1), float(price))
                 tick.__setattr__("ask_volume_" + str(n + 1), float(volume))
