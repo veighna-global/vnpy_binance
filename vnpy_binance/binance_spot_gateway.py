@@ -664,26 +664,30 @@ class BinanceSpotRestAPi(RestClient):
 
 
 class BinanceSpotTradeWebsocketApi(WebsocketClient):
-    """币安现货交易Websocket API"""
+    """The trade websocket API of BinanceUsdtGateway"""
 
     def __init__(self, gateway: BinanceSpotGateway) -> None:
-        """构造函数"""
+        """
+        The init method of the api.
+
+        gateway: the parent gateway object for pushing callback data.
+        """
         super().__init__()
 
         self.gateway: BinanceSpotGateway = gateway
-        self.gateway_name = gateway.gateway_name
+        self.gateway_name: str = gateway.gateway_name
 
     def connect(self, url: str, proxy_host: int, proxy_port: int) -> None:
-        """连接Websocket交易频道"""
+        """Start server connection"""
         self.init(url, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
         self.start()
 
     def on_connected(self) -> None:
-        """连接成功回报"""
-        self.gateway.write_log("交易Websocket API连接成功")
+        """Callback when server is connected"""
+        self.gateway.write_log("Trade Websocket API is connected")
 
     def on_packet(self, packet: dict) -> None:
-        """推送数据回报"""
+        """Callback of data update"""
         if packet["e"] == "outboundAccountPosition":
             self.on_account(packet)
         elif packet["e"] == "executionReport":
@@ -692,12 +696,12 @@ class BinanceSpotTradeWebsocketApi(WebsocketClient):
             self.on_listen_key_expired()
 
     def on_listen_key_expired(self) -> None:
-        """listenKey过期"""
-        self.gateway.write_log("listenKey过期")
+        """Callback of listen key expired"""
+        self.gateway.write_log("Listen key is expired")
         self.disconnect()
 
     def disconnect(self) -> None:
-        """"主动断开webscoket链接"""
+        """"Close server connection"""
         self._active = False
         ws = self._ws
         if ws:
@@ -705,7 +709,7 @@ class BinanceSpotTradeWebsocketApi(WebsocketClient):
             run_coroutine_threadsafe(coro, self._loop)
 
     def on_account(self, packet: dict) -> None:
-        """资金更新推送"""
+        """Callback of account balance update"""
         for d in packet["B"]:
             account: AccountData = AccountData(
                 accountid=d["a"],
@@ -718,8 +722,7 @@ class BinanceSpotTradeWebsocketApi(WebsocketClient):
                 self.gateway.on_account(account)
 
     def on_order(self, packet: dict) -> None:
-        """委托更新推送"""
-        # 过滤不支持类型的委托
+        """Callback of order and trade update"""
         if packet["o"] not in ORDERTYPE_BINANCE2VT:
             return
 
@@ -747,7 +750,7 @@ class BinanceSpotTradeWebsocketApi(WebsocketClient):
 
         self.gateway.on_order(order)
 
-        # 将成交数量四舍五入到正确精度
+        # Round trade volume to meet step size
         trade_volume = float(packet["l"])
         contract: ContractData = symbol_contract_map.get(order.symbol, None)
         if contract:
@@ -771,16 +774,20 @@ class BinanceSpotTradeWebsocketApi(WebsocketClient):
         self.gateway.on_trade(trade)
 
     def on_disconnected(self) -> None:
-        """连接断开回报"""
-        self.gateway.write_log("交易Websocket API断开")
+        """Callback when server is disconnected"""
+        self.gateway.write_log("Trade Websocket API is disconnected")
         self.gateway.rest_api.start_user_stream()
 
 
 class BinanceSpotDataWebsocketApi(WebsocketClient):
-    """币安现货行情Websocket API"""
+    """The data websocket API of BinanceUsdtGateway"""
 
     def __init__(self, gateway: BinanceSpotGateway) -> None:
-        """构造函数"""
+        """
+        The init method of the api.
+
+        gateway: the parent gateway object for pushing callback data.
+        """
         super().__init__()
 
         self.gateway: BinanceSpotGateway = gateway
@@ -789,8 +796,16 @@ class BinanceSpotDataWebsocketApi(WebsocketClient):
         self.ticks: dict[str, TickData] = {}
         self.reqid: int = 0
 
-    def connect(self, proxy_host: str, proxy_port: int, server: str):
-        """连接Websocket行情频道"""
+    def connect(
+        self,
+        server: str,
+        kline_stream: bool,
+        proxy_host: str,
+        proxy_port: int,
+    ) -> None:
+        """Start server connection"""
+        self.kline_stream = kline_stream
+
         if server == "REAL":
             self.init(WEBSOCKET_DATA_HOST, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
         else:
@@ -799,8 +814,8 @@ class BinanceSpotDataWebsocketApi(WebsocketClient):
         self.start()
 
     def on_connected(self) -> None:
-        """连接成功回报"""
-        self.gateway.write_log("行情Websocket API连接成功")
+        """Callback when server is connected"""
+        self.gateway.write_log("Data Websocket API is connected")
 
         # 重新订阅行情
         if self.ticks:
@@ -808,6 +823,9 @@ class BinanceSpotDataWebsocketApi(WebsocketClient):
             for symbol in self.ticks.keys():
                 channels.append(f"{symbol}@ticker")
                 channels.append(f"{symbol}@depth5")
+
+                if self.kline_stream:
+                    channels.append(f"{symbol}@kline_1m")
 
             req: dict = {
                 "method": "SUBSCRIBE",
@@ -817,17 +835,17 @@ class BinanceSpotDataWebsocketApi(WebsocketClient):
             self.send_packet(req)
 
     def subscribe(self, req: SubscribeRequest) -> None:
-        """订阅行情"""
+        """Subscribe market data"""
         if req.symbol in self.ticks:
             return
 
         if req.symbol not in symbol_contract_map:
-            self.gateway.write_log(f"找不到该合约代码{req.symbol}")
+            self.gateway.write_log(f"Symbol not found {req.symbol}")
             return
 
         self.reqid += 1
 
-        # 创建TICK对象
+        # Initialize tick object
         tick: TickData = TickData(
             symbol=req.symbol,
             name=symbol_contract_map[req.symbol].name,
@@ -835,12 +853,16 @@ class BinanceSpotDataWebsocketApi(WebsocketClient):
             datetime=datetime.now(UTC_TZ),
             gateway_name=self.gateway_name,
         )
+        tick.extra = {}
         self.ticks[req.symbol] = tick
 
         channels = [
             f"{req.symbol}@ticker",
             f"{req.symbol}@depth5"
         ]
+
+        if self.kline_stream:
+            channels.append(f"{req.symbol.lower()}@kline_1m")
 
         req: dict = {
             "method": "SUBSCRIBE",
@@ -850,7 +872,7 @@ class BinanceSpotDataWebsocketApi(WebsocketClient):
         self.send_packet(req)
 
     def on_packet(self, packet: dict) -> None:
-        """推送数据回报"""
+        """Callback of data update"""
         stream: str = packet.get("stream", None)
 
         if not stream:
@@ -869,7 +891,7 @@ class BinanceSpotDataWebsocketApi(WebsocketClient):
             tick.low_price = float(data['l'])
             tick.last_price = float(data['c'])
             tick.datetime = generate_datetime(float(data['E']))
-        else:
+        elif channel == "depth5":
             bids: list = data["bids"]
             for n in range(min(5, len(bids))):
                 price, volume = bids[n]
@@ -881,18 +903,41 @@ class BinanceSpotDataWebsocketApi(WebsocketClient):
                 price, volume = asks[n]
                 tick.__setattr__("ask_price_" + str(n + 1), float(price))
                 tick.__setattr__("ask_volume_" + str(n + 1), float(volume))
+        else:
+            kline_data: dict = data["k"]
+
+            # Check if bar is closed
+            bar_ready: bool = kline_data.get("x", False)
+            if not bar_ready:
+                return
+
+            dt: datetime = generate_datetime(float(kline_data['t']))
+
+            tick.extra["bar"] = BarData(
+                symbol=symbol.upper(),
+                exchange=Exchange.BINANCE,
+                datetime=dt.replace(second=0, microsecond=0),
+                interval=Interval.MINUTE,
+                volume=float(kline_data["v"]),
+                turnover=float(kline_data["q"]),
+                open_price=float(kline_data["o"]),
+                high_price=float(kline_data["h"]),
+                low_price=float(kline_data["l"]),
+                close_price=float(kline_data["c"]),
+                gateway_name=self.gateway_name
+            )
 
         if tick.last_price:
             tick.localtime = datetime.now()
             self.gateway.on_tick(copy(tick))
 
     def on_disconnected(self) -> None:
-        """连接断开回报"""
-        self.gateway.write_log("行情Websocket API断开")
+        """Callback when server is disconnected"""
+        self.gateway.write_log("Data Websocket API is disconnected")
 
 
 def generate_datetime(timestamp: float) -> datetime:
-    """生成时间"""
+    """Generate datetime object from Binance timestamp"""
     dt: datetime = datetime.fromtimestamp(timestamp / 1000)
     dt: datetime = dt.replace(tzinfo=UTC_TZ)
     return dt
