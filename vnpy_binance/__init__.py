@@ -1,6 +1,6 @@
 # The MIT License (MIT)
 #
-# Copyright (c) 2015-present, vn-crypto
+# Copyright (c) 2015-present, VeighNa Global
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -23,7 +23,7 @@
 import importlib_metadata
 
 from .binance_spot_gateway import BinanceSpotGateway
-from .binance_usdt_gateway import BinanceUsdtGateway
+from .binance_linear_gateway import BinanceLinearGateway, BinanceUsdtGateway
 from .binance_inverse_gateway import BinanceInverseGateway
 
 

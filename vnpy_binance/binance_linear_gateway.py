@@ -108,15 +108,15 @@ class Security(Enum):
     API_KEY: int = 2
 
 
-class BinanceUsdtGateway(BaseGateway):
+class BinanceLinearGateway(BaseGateway):
     """
-    The Binance USDT trading gateway for VeighNa.
+    The Binance linear trading gateway for VeighNa.
 
     1. Only support crossed position
     2. Only support one-way mode
     """
 
-    default_name: str = "BINANCE_USDT"
+    default_name: str = "BINANCE_LINEAR"
 
     default_setting: dict = {
         "API Key": "",
@@ -138,9 +138,9 @@ class BinanceUsdtGateway(BaseGateway):
         """
         super().__init__(event_engine, gateway_name)
 
-        self.trade_ws_api: BinanceUsdtTradeWebsocketApi = BinanceUsdtTradeWebsocketApi(self)
-        self.market_ws_api: BinanceUsdtDataWebsocketApi = BinanceUsdtDataWebsocketApi(self)
-        self.rest_api: BinanceUsdtRestApi = BinanceUsdtRestApi(self)
+        self.trade_ws_api: BinanceLinearTradeWebsocketApi = BinanceLinearTradeWebsocketApi(self)
+        self.market_ws_api: BinanceLinearDataWebsocketApi = BinanceLinearDataWebsocketApi(self)
+        self.rest_api: BinanceLinearRestApi = BinanceLinearRestApi(self)
 
         self.orders: dict[str, OrderData] = {}
 
@@ -202,10 +202,10 @@ class BinanceUsdtGateway(BaseGateway):
         return self.orders.get(orderid, None)
 
 
-class BinanceUsdtRestApi(RestClient):
-    """The REST API of BinanceUsdtGateway"""
+class BinanceLinearRestApi(RestClient):
+    """The REST API of BinanceLinearGateway"""
 
-    def __init__(self, gateway: BinanceUsdtGateway) -> None:
+    def __init__(self, gateway: BinanceLinearGateway) -> None:
         """
         The init method of the api.
 
@@ -213,10 +213,10 @@ class BinanceUsdtRestApi(RestClient):
         """
         super().__init__()
 
-        self.gateway: BinanceUsdtGateway = gateway
+        self.gateway: BinanceLinearGateway = gateway
         self.gateway_name: str = gateway.gateway_name
 
-        self.trade_ws_api: BinanceUsdtTradeWebsocketApi = self.gateway.trade_ws_api
+        self.trade_ws_api: BinanceLinearTradeWebsocketApi = self.gateway.trade_ws_api
 
         self.key: str = ""
         self.secret: str = ""
@@ -730,10 +730,10 @@ class BinanceUsdtRestApi(RestClient):
         return history
 
 
-class BinanceUsdtTradeWebsocketApi(WebsocketClient):
-    """The trade websocket API of BinanceUsdtGateway"""
+class BinanceLinearTradeWebsocketApi(WebsocketClient):
+    """The trade websocket API of BinanceLinearGateway"""
 
-    def __init__(self, gateway: BinanceUsdtGateway) -> None:
+    def __init__(self, gateway: BinanceLinearGateway) -> None:
         """
         The init method of the api.
 
@@ -741,7 +741,7 @@ class BinanceUsdtTradeWebsocketApi(WebsocketClient):
         """
         super().__init__()
 
-        self.gateway: BinanceUsdtGateway = gateway
+        self.gateway: BinanceLinearGateway = gateway
         self.gateway_name: str = gateway.gateway_name
 
     def connect(self, url: str, proxy_host: str, proxy_port: int) -> None:
@@ -862,10 +862,10 @@ class BinanceUsdtTradeWebsocketApi(WebsocketClient):
         self.gateway.rest_api.start_user_stream()
 
 
-class BinanceUsdtDataWebsocketApi(WebsocketClient):
-    """The data websocket API of BinanceUsdtGateway"""
+class BinanceLinearDataWebsocketApi(WebsocketClient):
+    """The data websocket API of BinanceLinearGateway"""
 
-    def __init__(self, gateway: BinanceUsdtGateway) -> None:
+    def __init__(self, gateway: BinanceLinearGateway) -> None:
         """
         The init method of the api.
 
@@ -873,7 +873,7 @@ class BinanceUsdtDataWebsocketApi(WebsocketClient):
         """
         super().__init__()
 
-        self.gateway: BinanceUsdtGateway = gateway
+        self.gateway: BinanceLinearGateway = gateway
         self.gateway_name: str = gateway.gateway_name
 
         self.ticks: dict[str, TickData] = {}
@@ -1025,3 +1025,9 @@ def generate_datetime(timestamp: float) -> datetime:
     dt: datetime = datetime.fromtimestamp(timestamp / 1000)
     dt: datetime = dt.replace(tzinfo=UTC_TZ)
     return dt
+
+
+class BinanceUsdtGateway(BinanceLinearGateway):
+    """Compatibility interface for the old BinanceUsdtGateway"""
+
+    default_name: str = "BINANCE_USDT"
