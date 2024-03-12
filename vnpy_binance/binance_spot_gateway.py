@@ -222,7 +222,7 @@ class BinanceSpotRestAPi(RestClient):
         self.time_offset: int = 0
 
         self.order_count: int = 1_000_000
-        self.order_prefix: str = 0
+        self.order_prefix: str = ""
 
     def sign(self, request: Request) -> Request:
         """Standard callback for signing a request"""
@@ -248,7 +248,11 @@ class BinanceSpotRestAPi(RestClient):
             request.params["timestamp"] = timestamp
 
             query: str = urllib.parse.urlencode(sorted(request.params.items()))
-            signature: bytes = hmac.new(self.secret, query.encode("utf-8"), hashlib.sha256).hexdigest()
+            signature: bytes = hmac.new(
+                self.secret,
+                query.encode("utf-8"),
+                hashlib.sha256
+            ).hexdigest()
 
             query += "&signature={}".format(signature)
             path: str = request.path + "?" + query
@@ -363,9 +367,9 @@ class BinanceSpotRestAPi(RestClient):
         )
         self.gateway.on_order(order)
 
+        # Create order parameters
         data: dict = {"security": Security.SIGNED}
 
-        # Create order parameters
         params: dict = {
             "symbol": req.symbol.upper(),
             "side": DIRECTION_VT2BINANCE[req.direction],
@@ -664,7 +668,7 @@ class BinanceSpotRestAPi(RestClient):
 
 
 class BinanceSpotTradeWebsocketApi(WebsocketClient):
-    """The trade websocket API of BinanceUsdtGateway"""
+    """The trade websocket API of BinanceSpotGateway"""
 
     def __init__(self, gateway: BinanceSpotGateway) -> None:
         """
@@ -780,7 +784,7 @@ class BinanceSpotTradeWebsocketApi(WebsocketClient):
 
 
 class BinanceSpotDataWebsocketApi(WebsocketClient):
-    """The data websocket API of BinanceUsdtGateway"""
+    """The data websocket API of BinanceSpotGateway"""
 
     def __init__(self, gateway: BinanceSpotGateway) -> None:
         """

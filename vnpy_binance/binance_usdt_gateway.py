@@ -226,7 +226,7 @@ class BinanceUsdtRestApi(RestClient):
         self.time_offset: int = 0
 
         self.order_count: int = 1_000_000
-        self.order_prefix: str = 0
+        self.order_prefix: str = ""
 
     def sign(self, request: Request) -> Request:
         """Standard callback for signing a request"""
@@ -391,9 +391,9 @@ class BinanceUsdtRestApi(RestClient):
         )
         self.gateway.on_order(order)
 
+        # Create order parameters
         data: dict = {"security": Security.SIGNED}
 
-        # Create order parameters
         params: dict = {
             "symbol": req.symbol,
             "side": DIRECTION_VT2BINANCES[req.direction],
@@ -623,7 +623,7 @@ class BinanceUsdtRestApi(RestClient):
             order.status = Status.REJECTED
             self.gateway.on_order(order)
 
-        msg = f"Cancel orde failed, status code: {status_code}, message: {request.response.text}, order: {request.extra} "
+        msg: str = f"Cancel orde failed, status code: {status_code}, message: {request.response.text}, order: {request.extra} "
         self.gateway.write_log(msg)
 
     def on_start_user_stream(self, data: dict, request: Request) -> None:
