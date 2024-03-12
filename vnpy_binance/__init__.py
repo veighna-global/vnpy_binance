@@ -20,14 +20,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import importlib_metadata
-
 from .binance_spot_gateway import BinanceSpotGateway
 from .binance_linear_gateway import BinanceLinearGateway, BinanceUsdtGateway
 from .binance_inverse_gateway import BinanceInverseGateway
 
 
-try:
-    __version__ = importlib_metadata.version("vnpy_binance")
-except importlib_metadata.PackageNotFoundError:
-    __version__ = "dev"
+__version__ = "2024.3.12"
