@@ -493,6 +493,8 @@ class BinanceInverseRestApi(RestClient):
         server_time: int = int(data["serverTime"])
         self.time_offset: int = local_time - server_time
 
+        self.gateway.write_log(f"Server time updated, local offset: {self.time_offset}ms")
+
     def on_query_account(self, data: dict, request: Request) -> None:
         """Callback of account balance query"""
         for asset in data["assets"]:
