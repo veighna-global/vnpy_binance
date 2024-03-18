@@ -303,11 +303,6 @@ class BinanceSpotRestAPi(RestClient):
         self.query_time()
         self.query_contract()
 
-        if key and secret:
-            self.query_account()
-            self.query_order()
-            self.start_user_stream()
-
     def query_time(self) -> None:
         """Query server time"""
         data: dict = {"security": Security.NONE}
@@ -458,6 +453,12 @@ class BinanceSpotRestAPi(RestClient):
         self.time_offset = local_time - server_time
 
         self.gateway.write_log(f"Server time updated, local offset: {self.time_offset}ms")
+
+        # Query private data after time offset is calculated
+        if self.key and self.secret:
+            self.query_account()
+            self.query_order()
+            self.start_user_stream()
 
     def on_query_account(self, data: dict, request: Request) -> None:
         """Callback of account balance query"""
