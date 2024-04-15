@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 from time import sleep
 
 from aiohttp import ClientSSLError
+from numpy import format_float_positional
 
 from vnpy_evo.event import Event, EventEngine
 from vnpy_evo.trader.constant import (
@@ -369,17 +370,17 @@ class BinanceSpotRestAPi(RestClient):
             "symbol": req.symbol.upper(),
             "side": DIRECTION_VT2BINANCE[req.direction],
             "type": ORDERTYPE_VT2BINANCE[req.type],
-            "quantity": format(req.volume, "f"),
+            "quantity": format_float(req.volume, "f"),
             "newClientOrderId": orderid,
             "newOrderRespType": "ACK"
         }
 
         if req.type == OrderType.LIMIT:
             params["timeInForce"] = "GTC"
-            params["price"] = str(req.price)
+            params["price"] = format_float(req.price)
         elif req.type == OrderType.STOP:
             params["type"] = "STOP_LOSS"
-            params["stopPrice"] = float(req.price)
+            params["stopPrice"] = format_float(req.price)
 
         self.add_request(
             method="POST",
@@ -948,3 +949,12 @@ def generate_datetime(timestamp: float) -> datetime:
     dt: datetime = datetime.fromtimestamp(timestamp / 1000)
     dt: datetime = dt.replace(tzinfo=UTC_TZ)
     return dt
+
+
+def format_float(self, f: float) -> str:
+    """
+    Convert float number to string with correct precision.
+
+    Fix potential error -1111: Parameter 'quantity' has too much precision
+    """
+    return format_float_positional(f, trim='-')

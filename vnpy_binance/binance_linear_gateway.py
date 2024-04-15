@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from asyncio import run_coroutine_threadsafe
 
 from aiohttp import ClientSSLError
+from numpy import format_float_positional
 
 from vnpy_evo.event import Event, EventEngine
 from vnpy_evo.trader.constant import (
@@ -391,7 +392,7 @@ class BinanceLinearRestApi(RestClient):
         params: dict = {
             "symbol": req.symbol,
             "side": DIRECTION_VT2BINANCES[req.direction],
-            "quantity": float(req.volume),
+            "quantity": format_float(req.volume),
             "newClientOrderId": orderid,
         }
 
@@ -399,12 +400,12 @@ class BinanceLinearRestApi(RestClient):
             params["type"] = "MARKET"
         elif req.type == OrderType.STOP:
             params["type"] = "STOP_MARKET"
-            params["stopPrice"] = float(req.price)
+            params["stopPrice"] = format_float(req.price)
         else:
             order_type, time_condition = ORDERTYPE_VT2BINANCES[req.type]
             params["type"] = order_type
             params["timeInForce"] = time_condition
-            params["price"] = float(req.price)
+            params["price"] = format_float(req.price)
 
         path: str = "/fapi/v1/order"
 
@@ -1028,6 +1029,15 @@ def generate_datetime(timestamp: float) -> datetime:
     dt: datetime = datetime.fromtimestamp(timestamp / 1000)
     dt: datetime = dt.replace(tzinfo=UTC_TZ)
     return dt
+
+
+def format_float(self, f: float) -> str:
+    """
+    Convert float number to string with correct precision.
+
+    Fix potential error -1111: Parameter 'quantity' has too much precision
+    """
+    return format_float_positional(f, trim='-')
 
 
 class BinanceUsdtGateway(BinanceLinearGateway):
