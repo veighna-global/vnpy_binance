@@ -370,7 +370,7 @@ class BinanceSpotRestAPi(RestClient):
             "symbol": req.symbol.upper(),
             "side": DIRECTION_VT2BINANCE[req.direction],
             "type": ORDERTYPE_VT2BINANCE[req.type],
-            "quantity": format_float(req.volume, "f"),
+            "quantity": format_float(req.volume),
             "newClientOrderId": orderid,
             "newOrderRespType": "ACK"
         }
@@ -951,7 +951,7 @@ def generate_datetime(timestamp: float) -> datetime:
     return dt
 
 
-def format_float(self, f: float) -> str:
+def format_float(f: float) -> str:
     """
     Convert float number to string with correct precision.
 

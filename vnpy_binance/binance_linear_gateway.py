@@ -1031,7 +1031,7 @@ def generate_datetime(timestamp: float) -> datetime:
     return dt
 
 
-def format_float(self, f: float) -> str:
+def format_float(f: float) -> str:
     """
     Convert float number to string with correct precision.
 
