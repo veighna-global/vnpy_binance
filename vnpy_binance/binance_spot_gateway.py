@@ -566,7 +566,7 @@ class BinanceSpotRestAPi(RestClient):
             order.status = Status.REJECTED
             self.gateway.on_order(order)
 
-        msg = f"Cancel orde failed, status code: {status_code}, message: {request.response.text}, order: {request.extra} "
+        msg = f"Cancel order failed, status code: {status_code}, message: {request.response.text}, order: {request.extra} "
         self.gateway.write_log(msg)
 
     def on_start_user_stream(self, data: dict, request: Request) -> None:
