@@ -1026,8 +1026,7 @@ class BinanceLinearDataWebsocketApi(WebsocketClient):
 
 def generate_datetime(timestamp: float) -> datetime:
     """Generate datetime object from Binance timestamp"""
-    dt: datetime = datetime.fromtimestamp(timestamp / 1000)
-    dt: datetime = dt.replace(tzinfo=UTC_TZ)
+    dt: datetime = datetime.fromtimestamp(timestamp / 1000, tz=UTC_TZ)
     return dt
 
 
