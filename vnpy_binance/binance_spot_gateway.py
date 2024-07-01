@@ -685,6 +685,8 @@ class BinanceSpotTradeWebsocketApi(WebsocketClient):
         self.gateway: BinanceSpotGateway = gateway
         self.gateway_name: str = gateway.gateway_name
 
+        self.active_accounts: set[str] = set()
+
     def connect(self, url: str, proxy_host: int, proxy_port: int) -> None:
         """Start server connection"""
         self.init(url, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
@@ -726,7 +728,8 @@ class BinanceSpotTradeWebsocketApi(WebsocketClient):
                 gateway_name=self.gateway_name
             )
 
-            if account.balance:
+            if account.balance or account.accountid in self.active_accounts:
+                self.active_accounts.add(account.accountid)
                 self.gateway.on_account(account)
 
     def on_order(self, packet: dict) -> None:
