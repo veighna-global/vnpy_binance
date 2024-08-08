@@ -462,6 +462,9 @@ class BinanceInverseRestApi(RestClient):
 
     def keep_user_stream(self) -> Request:
         """Extend listen key validity"""
+        if not self.user_stream_key:
+            return
+
         self.keep_alive_count += 1
         if self.keep_alive_count < 600:
             return
