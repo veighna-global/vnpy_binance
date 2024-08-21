@@ -36,9 +36,8 @@ from vnpy_evo.trader.object import (
 )
 from vnpy_evo.trader.event import EVENT_TIMER
 from vnpy_evo.trader.utility import round_to, ZoneInfo
-
-from vnpy_rest import Request, RestClient, Response
-from vnpy_websocket import WebsocketClient
+from vnpy_evo.rest import Request, RestClient, Response
+from vnpy_evo.websocket import WebsocketClient
 
 
 # Timezone constant
