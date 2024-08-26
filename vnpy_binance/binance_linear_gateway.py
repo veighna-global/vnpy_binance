@@ -6,9 +6,7 @@ from copy import copy
 from enum import Enum
 from time import sleep
 from datetime import datetime, timedelta
-from asyncio import run_coroutine_threadsafe
 
-from aiohttp import ClientSSLError
 from numpy import format_float_positional
 
 from vnpy_evo.event import Event, EventEngine
@@ -615,7 +613,7 @@ class BinanceLinearRestApi(RestClient):
         order.status = Status.REJECTED
         self.gateway.on_order(order)
 
-        if not issubclass(exception_type, (ConnectionError, ClientSSLError)):
+        if not issubclass(exception_type, ConnectionError):
             self.on_error(exception_type, exception_value, tb, request)
 
     def on_cancel_order(self, data: dict, request: Request) -> None:
@@ -773,14 +771,6 @@ class BinanceLinearTradeWebsocketApi(WebsocketClient):
         self.gateway.write_log("Listen key is expired")
         self.disconnect()
 
-    def disconnect(self) -> None:
-        """"Close server connection"""
-        self._active = False
-        ws = self._ws
-        if ws:
-            coro = ws.close()
-            run_coroutine_threadsafe(coro, self._loop)
-
     def on_account(self, packet: dict) -> None:
         """Callback of account balance and holding position update"""
         for acc_data in packet["a"]["B"]:
@@ -862,9 +852,9 @@ class BinanceLinearTradeWebsocketApi(WebsocketClient):
         )
         self.gateway.on_trade(trade)
 
-    def on_disconnected(self) -> None:
+    def on_disconnected(self, status_code: int, msg: str) -> None:
         """Callback when server is disconnected"""
-        self.gateway.write_log("Trade Websocket API is disconnected")
+        self.gateway.write_log(f"Trade Websocket API is disconnected, code: {status_code}, msg: {msg}")
         self.gateway.rest_api.start_user_stream()
 
 
@@ -1021,9 +1011,9 @@ class BinanceLinearDataWebsocketApi(WebsocketClient):
             tick.localtime = datetime.now()
             self.gateway.on_tick(copy(tick))
 
-    def on_disconnected(self) -> None:
+    def on_disconnected(self, status_code: int, msg: str) -> None:
         """Callback when server is disconnected"""
-        self.gateway.write_log("Data Websocket API is disconnected")
+        self.gateway.write_log("Data Websocket API is disconnected, code: {status_code}, msg: {msg}")
 
 
 def generate_datetime(timestamp: float) -> datetime:
