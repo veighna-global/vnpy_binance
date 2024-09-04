@@ -1,3 +1,11 @@
+# 2024.9.4
+
+1. add extra data dict for BarData
+
+# 2024.9.3
+
+1. use vnpy_evo for rest and websocket client
+
 # 2024.8.10
 
 1. fix the problem of datetime timezone
