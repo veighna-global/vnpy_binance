@@ -644,6 +644,7 @@ class BinanceSpotRestAPi(RestClient):
                         close_price=float(row[4]),
                         gateway_name=self.gateway_name
                     )
+                    bar.extra = {"trades": int(row[8])}
                     buf.append(bar)
 
                 history.extend(buf)
