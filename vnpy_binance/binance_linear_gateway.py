@@ -322,7 +322,7 @@ class BinanceLinearRestApi(RestClient):
         """Query account balance"""
         data: dict = {"security": Security.SIGNED}
 
-        path: str = "/fapi/v2/account"
+        path: str = "/fapi/v3/account"
 
         self.add_request(
             method="GET",
@@ -335,7 +335,7 @@ class BinanceLinearRestApi(RestClient):
         """Query holding positions"""
         data: dict = {"security": Security.SIGNED}
 
-        path: str = "/fapi/v2/positionRisk"
+        path: str = "/fapi/v3/positionRisk"
 
         self.add_request(
             method="GET",
@@ -505,8 +505,7 @@ class BinanceLinearRestApi(RestClient):
                 gateway_name=self.gateway_name
             )
 
-            if account.balance:
-                self.gateway.on_account(account)
+            self.gateway.on_account(account)
 
         self.gateway.write_log("Account balance data is received")
 
@@ -523,14 +522,7 @@ class BinanceLinearRestApi(RestClient):
                 gateway_name=self.gateway_name,
             )
 
-            if position.volume:
-                volume = d["positionAmt"]
-                if '.' in volume:
-                    position.volume = float(d["positionAmt"])
-                else:
-                    position.volume = int(d["positionAmt"])
-
-                self.gateway.on_position(position)
+            self.gateway.on_position(position)
 
         self.gateway.write_log("Holding positions data is received")
 
