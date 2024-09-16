@@ -1,3 +1,8 @@
+# 2024.9.16
+
+1. add more detail to TickData.extra including: active_volume/active_turnover/trade_count
+2. BinanceLinearGateway upgrade to v3 api for querying account and position
+
 # 2024.9.4
 
 1. add extra data dict for BarData
