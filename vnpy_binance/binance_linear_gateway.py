@@ -714,7 +714,10 @@ class BinanceLinearRestApi(RestClient):
                 self.gateway.write_log(msg)
 
                 # Break the loop if the latest data received
-                if end >= req.end or len(data) < limit:
+                if (
+                    len(data) < limit
+                    or (req.end and end >= req.end)
+                ):
                     break
 
                 # Update query start time
