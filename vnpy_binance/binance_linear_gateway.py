@@ -701,8 +701,8 @@ class BinanceLinearRestApi(RestClient):
                     )
                     bar.extra = {
                         "trade_count": int(row[8]),
-                        "active_volume": int(row[9]),
-                        "active_turnover": int(row[10]),
+                        "active_volume": float(row[9]),
+                        "active_turnover": float(row[10]),
                     }
                     buf.append(bar)
 
@@ -714,7 +714,7 @@ class BinanceLinearRestApi(RestClient):
                 self.gateway.write_log(msg)
 
                 # Break the loop if the latest data received
-                if len(data) < limit:
+                if end >= req.end or len(data) < limit:
                     break
 
                 # Update query start time
