@@ -769,7 +769,6 @@ class BinanceLinearTradeWebsocketApi(WebsocketClient):
     def on_listen_key_expired(self) -> None:
         """Callback of listen key expired"""
         self.gateway.write_log("Listen key is expired")
-        self.disconnect()
 
     def on_account(self, packet: dict) -> None:
         """Callback of account balance and holding position update"""
