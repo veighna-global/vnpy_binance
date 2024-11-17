@@ -1013,7 +1013,7 @@ class BinanceLinearDataWebsocketApi(WebsocketClient):
 
     def on_disconnected(self, status_code: int, msg: str) -> None:
         """Callback when server is disconnected"""
-        self.gateway.write_log("Data Websocket API is disconnected, code: {status_code}, msg: {msg}")
+        self.gateway.write_log(f"Data Websocket API is disconnected, code: {status_code}, msg: {msg}")
 
 
 def generate_datetime(timestamp: float) -> datetime:
