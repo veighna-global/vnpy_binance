@@ -100,7 +100,7 @@ symbol_contract_map: dict[str, ContractData] = {}
 
 
 # Authentication level
-class 安全(Enum):
+class Security(Enum):
     NONE: int = 0
     SIGNED: int = 1
     API_KEY: int = 2
