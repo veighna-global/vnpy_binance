@@ -1,3 +1,7 @@
+# 2024.12.16
+
+1. write log (event) when exception raised by websocket client
+
 # 2024.9.16
 
 1. add more detail to TickData.extra including: active_volume/active_turnover/trade_count
