@@ -25,4 +25,4 @@ from .binance_linear_gateway import BinanceLinearGateway, BinanceUsdtGateway
 from .binance_inverse_gateway import BinanceInverseGateway
 
 
-__version__ = "2024.12.16"
+__version__ = "2025.1.25"

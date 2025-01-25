@@ -1,3 +1,7 @@
+# 2025.1.25
+
+1. BinanceLinearGateway replace REST API with Websocket API for sending orders
+
 # 2024.12.16
 
 1. write log (event) when exception raised by websocket client
