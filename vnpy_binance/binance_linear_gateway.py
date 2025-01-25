@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import time
 from copy import copy
+from typing import Callable
 from enum import Enum
 from time import sleep
 from datetime import datetime, timedelta
@@ -43,12 +44,14 @@ UTC_TZ = ZoneInfo("UTC")
 
 # Real server hosts
 F_REST_HOST: str = "https://fapi.binance.com"
-F_WEBSOCKET_TRADE_HOST: str = "wss://fstream.binance.com/ws/"
+F_WEBSOCKET_TRADE_HOST: str = "wss://ws-fapi.binance.com/ws-fapi/v1"
+F_WEBSOCKET_USER_HOST: str = "wss://fstream.binance.com/ws/"
 F_WEBSOCKET_DATA_HOST: str = "wss://fstream.binance.com/stream"
 
 # Testnet server hosts
 F_TESTNET_REST_HOST: str = "https://testnet.binancefuture.com"
-F_TESTNET_WEBSOCKET_TRADE_HOST: str = "wss://stream.binancefuture.com/ws/"
+F_TESTNET_WEBSOCKET_TRADE_HOST: str = "wss://testnet.binancefuture.com/ws-fapi/v1"
+F_TESTNET_WEBSOCKET_USER_HOST: str = "wss://stream.binancefuture.com/ws/"
 F_TESTNET_WEBSOCKET_DATA_HOST: str = "wss://stream.binancefuture.com/stream"
 
 # Order status map
@@ -137,6 +140,7 @@ class BinanceLinearGateway(BaseGateway):
         super().__init__(event_engine, gateway_name)
 
         self.trade_ws_api: BinanceLinearTradeWebsocketApi = BinanceLinearTradeWebsocketApi(self)
+        self.user_ws_api: BinanceLinearUserWebsocketApi = BinanceLinearUserWebsocketApi(self)
         self.market_ws_api: BinanceLinearDataWebsocketApi = BinanceLinearDataWebsocketApi(self)
         self.rest_api: BinanceLinearRestApi = BinanceLinearRestApi(self)
 
@@ -152,6 +156,7 @@ class BinanceLinearGateway(BaseGateway):
         proxy_port: int = setting["Proxy Port"]
 
         self.rest_api.connect(key, secret, server, proxy_host, proxy_port)
+        self.trade_ws_api.connect(key, secret, server, proxy_host, proxy_port)
         self.market_ws_api.connect(server, kline_stream, proxy_host, proxy_port)
 
         self.event_engine.register(EVENT_TIMER, self.process_timer_event)
@@ -162,11 +167,11 @@ class BinanceLinearGateway(BaseGateway):
 
     def send_order(self, req: OrderRequest) -> str:
         """Send new order"""
-        return self.rest_api.send_order(req)
+        return self.trade_ws_api.send_order(req)
 
     def cancel_order(self, req: CancelRequest) -> None:
         """Cancel existing order"""
-        self.rest_api.cancel_order(req)
+        self.trade_ws_api.cancel_order(req)
 
     def query_account(self) -> None:
         """Not required since Binance provides websocket update"""
@@ -183,7 +188,7 @@ class BinanceLinearGateway(BaseGateway):
     def close(self) -> None:
         """Close server connections"""
         self.rest_api.stop()
-        self.trade_ws_api.stop()
+        self.user_ws_api.stop()
         self.market_ws_api.stop()
 
     def process_timer_event(self, event: Event) -> None:
@@ -214,10 +219,10 @@ class BinanceLinearRestApi(RestClient):
         self.gateway: BinanceLinearGateway = gateway
         self.gateway_name: str = gateway.gateway_name
 
-        self.trade_ws_api: BinanceLinearTradeWebsocketApi = self.gateway.trade_ws_api
+        self.user_ws_api: BinanceLinearUserWebsocketApi = self.gateway.user_ws_api
 
         self.key: str = ""
-        self.secret: str = ""
+        self.secret: bytes = b""
 
         self.user_stream_key: str = ""
         self.keep_alive_count: int = 0
@@ -628,11 +633,11 @@ class BinanceLinearRestApi(RestClient):
         self.keep_alive_count = 0
 
         if self.server == "REAL":
-            url = F_WEBSOCKET_TRADE_HOST + self.user_stream_key
+            url = F_WEBSOCKET_USER_HOST + self.user_stream_key
         else:
-            url = F_TESTNET_WEBSOCKET_TRADE_HOST + self.user_stream_key
+            url = F_TESTNET_WEBSOCKET_USER_HOST + self.user_stream_key
 
-        self.trade_ws_api.connect(url, self.proxy_host, self.proxy_port)
+        self.user_ws_api.connect(url, self.proxy_host, self.proxy_port)
 
     def on_keep_user_stream(self, data: dict, request: Request) -> None:
         """Successful callback of keep_user_stream"""
@@ -734,8 +739,8 @@ class BinanceLinearRestApi(RestClient):
         return history
 
 
-class BinanceLinearTradeWebsocketApi(WebsocketClient):
-    """The trade websocket API of BinanceLinearGateway"""
+class BinanceLinearUserWebsocketApi(WebsocketClient):
+    """The user data websocket API of BinanceLinearGateway"""
 
     def __init__(self, gateway: BinanceLinearGateway) -> None:
         """
@@ -755,7 +760,7 @@ class BinanceLinearTradeWebsocketApi(WebsocketClient):
 
     def on_connected(self) -> None:
         """Callback when server is connected"""
-        self.gateway.write_log("Trade Websocket API is connected")
+        self.gateway.write_log("User data Websocket API is connected")
 
     def on_packet(self, packet: dict) -> None:
         """Callback of data update"""
@@ -787,7 +792,7 @@ class BinanceLinearTradeWebsocketApi(WebsocketClient):
         for pos_data in packet["a"]["P"]:
             if pos_data["ps"] == "BOTH":
                 volume = pos_data["pa"]
-                if '.' in volume:
+                if "." in volume:
                     volume = float(volume)
                 else:
                     volume = int(volume)
@@ -970,13 +975,13 @@ class BinanceLinearDataWebsocketApi(WebsocketClient):
         tick: TickData = self.ticks[symbol]
 
         if channel == "ticker":
-            tick.volume = float(data['v'])
-            tick.turnover = float(data['q'])
-            tick.open_price = float(data['o'])
-            tick.high_price = float(data['h'])
-            tick.low_price = float(data['l'])
-            tick.last_price = float(data['c'])
-            tick.datetime = generate_datetime(float(data['E']))
+            tick.volume = float(data["v"])
+            tick.turnover = float(data["q"])
+            tick.open_price = float(data["o"])
+            tick.high_price = float(data["h"])
+            tick.low_price = float(data["l"])
+            tick.last_price = float(data["c"])
+            tick.datetime = generate_datetime(float(data["E"]))
         elif channel == "depth10":
             bids: list = data["b"]
             for n in range(min(10, len(bids))):
@@ -997,7 +1002,7 @@ class BinanceLinearDataWebsocketApi(WebsocketClient):
             if not bar_ready:
                 return
 
-            dt: datetime = generate_datetime(float(kline_data['t']))
+            dt: datetime = generate_datetime(float(kline_data["t"]))
 
             tick.extra["bar"] = BarData(
                 symbol=symbol.upper(),
@@ -1028,6 +1033,177 @@ class BinanceLinearDataWebsocketApi(WebsocketClient):
         self.gateway.write_log(f"Data Websocket API exception: {e}")
 
 
+class BinanceLinearTradeWebsocketApi(WebsocketClient):
+    """The trade websocket API of BinanceLinearGateway"""
+
+    def __init__(self, gateway: BinanceLinearGateway) -> None:
+        """
+        The init method of the api.
+
+        gateway: the parent gateway object for pushing callback data.
+        """
+        super().__init__()
+
+        self.gateway: BinanceLinearGateway = gateway
+        self.gateway_name: str = gateway.gateway_name
+
+        self.key: str = ""
+        self.secret: bytes = b""
+        self.proxy_port: int = 0
+        self.proxy_host: str = ""
+        self.server: str = ""
+
+        self.reqid: int = 0
+        self.order_count: int = 0
+        self.order_prefix: str = ""
+
+        self.reqid_callback_map: dict[int, Callable] = {}
+        self.reqid_order_map: dict[int, OrderData] = {}
+
+    def connect(
+        self,
+        key: str,
+        secret: str,
+        server: str,
+        proxy_host: str,
+        proxy_port: int
+    ) -> None:
+        """Start server connection"""
+        self.key = key
+        self.secret = secret.encode()
+        self.proxy_port = proxy_port
+        self.proxy_host = proxy_host
+        self.server = server
+
+        self.order_prefix = datetime.now().strftime("%y%m%d%H%M%S")
+
+        if self.server == "REAL":
+            self.init(F_WEBSOCKET_TRADE_HOST, proxy_host, proxy_port)
+        else:
+            self.init(F_TESTNET_WEBSOCKET_TRADE_HOST, proxy_host, proxy_port)
+
+        self.start()
+
+    def sign(self, params: dict) -> None:
+        """Generate the signature for the request"""
+        timestamp: int = int(time.time() * 1000)
+        params["timestamp"] = timestamp
+
+        payload: str = "&".join([f"{k}={v}" for k, v in sorted(params.items())])
+        signature: str = hmac.new(
+            self.secret,
+            payload.encode("utf-8"),
+            hashlib.sha256
+        ).hexdigest()
+        params["signature"] = signature
+
+    def send_order(self, req: OrderRequest) -> str:
+        """Send new order"""
+        # Generate new order id
+        self.order_count += 1
+        orderid: str = self.order_prefix + str(self.order_count)
+
+        # Push a submitting order event
+        order: OrderData = req.create_order_data(
+            orderid,
+            self.gateway_name
+        )
+        self.gateway.on_order(order)
+
+        # Create order parameters
+        params: dict = {
+            "apiKey": self.key,
+            "symbol": req.symbol,
+            "side": DIRECTION_VT2BINANCES[req.direction],
+            "quantity": format_float(req.volume),
+            "newClientOrderId": orderid,
+        }
+
+        if req.type == OrderType.MARKET:
+            params["type"] = "MARKET"
+        elif req.type == OrderType.STOP:
+            params["type"] = "STOP_MARKET"
+            params["stopPrice"] = format_float(req.price)
+        else:
+            order_type, time_condition = ORDERTYPE_VT2BINANCES[req.type]
+            params["type"] = order_type
+            params["timeInForce"] = time_condition
+            params["price"] = format_float(req.price)
+
+        self.sign(params)
+
+        self.reqid += 1
+        self.reqid_callback_map[self.reqid] = self.on_send_order
+        self.reqid_order_map[self.reqid] = order
+
+        packet: dict = {
+            "id": self.reqid,
+            "method": "order.place",
+            "params": params,
+        }
+        self.send_packet(packet)
+
+        return order.vt_orderid
+
+    def cancel_order(self, req: CancelRequest) -> None:
+        """Cancel existing order"""
+        params: dict = {
+            "apiKey": self.key,
+            "symbol": req.symbol,
+            "origClientOrderId": req.orderid
+        }
+        self.sign(params)
+
+        self.reqid += 1
+        self.reqid_callback_map[self.reqid] = self.on_cancel_order
+
+        packet: dict = {
+            "id": self.reqid,
+            "method": "order.cancel",
+            "params": params,
+        }
+        self.send_packet(packet)
+
+    def on_connected(self) -> None:
+        """Callback when server is connected"""
+        self.gateway.write_log("Trade Websocket API is connected")
+
+    def on_packet(self, packet: dict) -> None:
+        """Callback of data update"""
+        reqid: int = packet.get("id", 0)
+        callback: Callable = self.reqid_callback_map.get(reqid, None)
+        if callback:
+            callback(packet)
+
+    def on_send_order(self, packet: dict) -> None:
+        """Callback of send order"""
+        error: dict = packet.get("error", None)
+        if not error:
+            return
+
+        error_code: str = error["code"]
+        error_msg: str = error["msg"]
+        msg: str = f"Send order failed, error code: {error_code}, message: {error_msg}"
+        self.gateway.write_log(msg)
+
+        reqid: int = packet.get("id", 0)
+        order: OrderData = self.reqid_order_map.get(reqid, None)
+        if order:
+            order.status = Status.REJECTED
+            self.gateway.on_order(order)
+
+    def on_cancel_order(self, packet: dict) -> None:
+        """Callback of cancel order"""
+        error: dict = packet.get("error", None)
+        if not error:
+            return
+
+        error_code: str = error["code"]
+        error_msg: str = error["msg"]
+        msg: str = f"Cancel order failed, error code: {error_code}, message: {error_msg}"
+        self.gateway.write_log(msg)
+
+
 def generate_datetime(timestamp: float) -> datetime:
     """Generate datetime object from Binance timestamp"""
     dt: datetime = datetime.fromtimestamp(timestamp / 1000, tz=UTC_TZ)
@@ -1038,9 +1214,9 @@ def format_float(f: float) -> str:
     """
     Convert float number to string with correct precision.
 
-    Fix potential error -1111: Parameter 'quantity' has too much precision
+    Fix potential error -1111: Parameter "quantity" has too much precision
     """
-    return format_float_positional(f, trim='-')
+    return format_float_positional(f, trim="-")
 
 
 class BinanceUsdtGateway(BinanceLinearGateway):
