@@ -506,7 +506,8 @@ class BinanceLinearRestApi(RestClient):
             account: AccountData = AccountData(
                 accountid=asset["asset"],
                 balance=float(asset["walletBalance"]),
-                frozen=float(asset["maintMargin"]),
+                # https://binance-docs.github.io/apidocs/futures/cn/#v3-user_data-2
+                frozen=float(asset["initialMargin"]),
                 gateway_name=self.gateway_name
             )
 
@@ -522,6 +523,7 @@ class BinanceLinearRestApi(RestClient):
                 exchange=Exchange.BINANCE,
                 direction=Direction.NET,
                 volume=float(d["positionAmt"]),
+                frozen=float(d["initialMargin"]), # https://binance-docs.github.io/apidocs/futures/cn/#v3-user_data-3
                 price=float(d["entryPrice"]),
                 pnl=float(d["unRealizedProfit"]),
                 gateway_name=self.gateway_name,
@@ -774,7 +776,6 @@ class BinanceLinearUserWebsocketApi(WebsocketClient):
     def on_listen_key_expired(self) -> None:
         """Callback of listen key expired"""
         self.gateway.write_log("Listen key is expired")
-        self.disconnect()
 
     def on_account(self, packet: dict) -> None:
         """Callback of account balance and holding position update"""
