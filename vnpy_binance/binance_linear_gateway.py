@@ -1,17 +1,18 @@
-import urllib
 import hashlib
 import hmac
 import time
+import urllib.parse
 from copy import copy
-from typing import Callable
+from typing import cast, Any
+from collections.abc import Callable
 from enum import Enum
 from time import sleep
 from datetime import datetime, timedelta
 
 from numpy import format_float_positional
 
-from vnpy_evo.event import Event, EventEngine
-from vnpy_evo.trader.constant import (
+from vnpy.event import Event, EventEngine
+from vnpy.trader.constant import (
     Direction,
     Exchange,
     Product,
@@ -19,8 +20,8 @@ from vnpy_evo.trader.constant import (
     OrderType,
     Interval
 )
-from vnpy_evo.trader.gateway import BaseGateway
-from vnpy_evo.trader.object import (
+from vnpy.trader.gateway import BaseGateway
+from vnpy.trader.object import (
     TickData,
     OrderData,
     TradeData,
@@ -33,10 +34,10 @@ from vnpy_evo.trader.object import (
     SubscribeRequest,
     HistoryRequest
 )
-from vnpy_evo.trader.event import EVENT_TIMER
-from vnpy_evo.trader.utility import round_to, ZoneInfo
-from vnpy_evo.rest import Request, RestClient, Response
-from vnpy_evo.websocket import WebsocketClient
+from vnpy.trader.event import EVENT_TIMER
+from vnpy.trader.utility import round_to, ZoneInfo
+from vnpy_rest import Request, RestClient, Response
+from vnpy_websocket import WebsocketClient
 
 
 # Timezone constant
@@ -80,6 +81,17 @@ DIRECTION_VT2BINANCES: dict[Direction, str] = {
 }
 DIRECTION_BINANCES2VT: dict[str, Direction] = {v: k for k, v in DIRECTION_VT2BINANCES.items()}
 
+# Product map
+PRODUCT_BINANCE2VT: dict[str, Product] = {
+    "PERPETUAL": Product.SWAP,
+    "PERPETUAL_DELIVERING": Product.SWAP,
+    "CURRENT_MONTH": Product.FUTURES,
+    "NEXT_MONTH": Product.FUTURES,
+    "CURRENT_QUARTER": Product.FUTURES,
+    "NEXT_QUARTER": Product.FUTURES,
+}
+
+
 # Kline interval map
 INTERVAL_VT2BINANCES: dict[Interval, str] = {
     Interval.MINUTE: "1m",
@@ -101,12 +113,14 @@ WEBSOCKET_TIMEOUT = 24 * 60 * 60
 # Global dict for contract data
 symbol_contract_map: dict[str, ContractData] = {}
 
+symbol_map: dict[str, str] = {}         # VeighNa symbol -> Binance symbol
+
 
 # Authentication level
 class Security(Enum):
-    NONE: int = 0
-    SIGNED: int = 1
-    API_KEY: int = 2
+    NONE = 0
+    SIGNED = 1
+    API_KEY = 2
 
 
 class BinanceLinearGateway(BaseGateway):
@@ -128,7 +142,7 @@ class BinanceLinearGateway(BaseGateway):
         "Proxy Port": 0
     }
 
-    exchanges: Exchange = [Exchange.BINANCE]
+    exchanges: Exchange = [Exchange.GLOBAL]
 
     def __init__(self, event_engine: EventEngine, gateway_name: str) -> None:
         """
@@ -242,7 +256,7 @@ class BinanceLinearRestApi(RestClient):
             path: str = request.path + "?" + urllib.parse.urlencode(request.params)
         else:
             request.params = dict()
-            path: str = request.path
+            path = request.path
 
         if security == Security.SIGNED:
             timestamp: int = int(time.time() * 1000)
@@ -255,14 +269,14 @@ class BinanceLinearRestApi(RestClient):
             request.params["timestamp"] = timestamp
 
             query: str = urllib.parse.urlencode(sorted(request.params.items()))
-            signature: bytes = hmac.new(
+            signature: str = hmac.new(
                 self.secret,
                 query.encode("utf-8"),
                 hashlib.sha256
             ).hexdigest()
 
-            query += "&signature={}".format(signature)
-            path: str = request.path + "?" + query
+            query += f"&signature={signature}"
+            path = request.path + "?" + query
 
         request.path = path
         request.params = {}
@@ -422,7 +436,7 @@ class BinanceLinearRestApi(RestClient):
             on_failed=self.on_send_order_failed
         )
 
-        return order.vt_orderid
+        return cast(str, order.vt_orderid)
 
     def cancel_order(self, req: CancelRequest) -> None:
         """Cancel existing order"""
@@ -489,7 +503,7 @@ class BinanceLinearRestApi(RestClient):
         """Callback of server time query"""
         local_time: int = int(time.time() * 1000)
         server_time: int = int(data["serverTime"])
-        self.time_offset: int = local_time - server_time
+        self.time_offset = local_time - server_time
 
         self.gateway.write_log(f"Server time updated, local offset: {self.time_offset}ms")
 
@@ -519,7 +533,7 @@ class BinanceLinearRestApi(RestClient):
         for d in data:
             position: PositionData = PositionData(
                 symbol=d["symbol"],
-                exchange=Exchange.BINANCE,
+                exchange=Exchange.GLOBAL,
                 direction=Direction.NET,
                 volume=float(d["positionAmt"]),
                 price=float(d["entryPrice"]),
@@ -542,7 +556,7 @@ class BinanceLinearRestApi(RestClient):
             order: OrderData = OrderData(
                 orderid=d["clientOrderId"],
                 symbol=d["symbol"],
-                exchange=Exchange.BINANCE,
+                exchange=Exchange.GLOBAL,
                 price=float(d["price"]),
                 volume=float(d["origQty"]),
                 type=order_type,
@@ -559,32 +573,38 @@ class BinanceLinearRestApi(RestClient):
     def on_query_contract(self, data: dict, request: Request) -> None:
         """Callback of available contracts query"""
         for d in data["symbols"]:
-            base_currency: str = d["baseAsset"]
-            quote_currency: str = d["quoteAsset"]
-            name: str = f"{base_currency.upper()}/{quote_currency.upper()}"
-
-            pricetick: int = 1
-            min_volume: int = 1
+            pricetick: float = 1
+            min_volume: float = 1
+            max_volume: float = 1
 
             for f in d["filters"]:
                 if f["filterType"] == "PRICE_FILTER":
                     pricetick = float(f["tickSize"])
                 elif f["filterType"] == "LOT_SIZE":
-                    min_volume = float(f["stepSize"])
+                    min_volume = float(f["minQty"])
+                    max_volume = float(f["maxQty"])
+
+            product: Product = PRODUCT_BINANCE2VT.get(d["contractType"], Product.SWAP)
+            if product == Product.SWAP:
+                symbol: str = d["symbol"] + "_SWAP_BINANCE"
+            else:
+                symbol = d["symbol"] + "_BINANCE"
 
             contract: ContractData = ContractData(
-                symbol=d["symbol"],
-                exchange=Exchange.BINANCE,
-                name=name,
+                symbol=symbol,
+                exchange=Exchange.GLOBAL,
+                name=d["symbol"],
                 pricetick=pricetick,
                 size=1,
                 min_volume=min_volume,
-                product=Product.FUTURES,
+                max_volume=max_volume,
+                product=PRODUCT_BINANCE2VT.get(d["contractType"], Product.SWAP),
                 net_position=True,
                 history_data=True,
                 gateway_name=self.gateway_name,
                 stop_supported=True
             )
+            contract.extra = {"binance_symbol": d["symbol"]}
             self.gateway.on_contract(contract)
 
             symbol_contract_map[contract.symbol] = contract
@@ -604,7 +624,7 @@ class BinanceLinearRestApi(RestClient):
         msg: str = f"Send order failed, status code: {status_code}, message: {request.response.text}"
         self.gateway.write_log(msg)
 
-    def on_send_order_error(self, exception_type: type, exception_value: Exception, tb, request: Request) -> None:
+    def on_send_order_error(self, exception_type: type, exception_value: Exception, tb: Any, request: Request) -> None:
         """Error callback of send_order"""
         order: OrderData = request.extra
         order.status = Status.REJECTED
@@ -643,7 +663,7 @@ class BinanceLinearRestApi(RestClient):
         """Successful callback of keep_user_stream"""
         pass
 
-    def on_keep_user_stream_error(self, exception_type: type, exception_value: Exception, tb, request: Request) -> None:
+    def on_keep_user_stream_error(self, exception_type: type, exception_value: Exception, tb: Any, request: Request) -> None:
         """Error callback of keep_user_stream"""
         if not issubclass(exception_type, TimeoutError):        # Ignore timeout exception
             self.on_error(exception_type, exception_value, tb, request)
@@ -684,7 +704,7 @@ class BinanceLinearRestApi(RestClient):
             else:
                 data: dict = resp.json()
                 if not data:
-                    msg: str = f"No kline history data is received, start time: {start_time}"
+                    msg = f"No kline history data is received, start time: {start_time}"
                     self.gateway.write_log(msg)
                     break
 
@@ -715,7 +735,7 @@ class BinanceLinearRestApi(RestClient):
                 end: datetime = buf[-1].datetime
 
                 history.extend(buf)
-                msg: str = f"Query kline history finished, {req.symbol} - {req.interval.value}, {begin} - {end}"
+                msg = f"Query kline history finished, {req.symbol} - {req.interval.value}, {begin} - {end}"
                 self.gateway.write_log(msg)
 
                 # Break the loop if the latest data received
@@ -799,7 +819,7 @@ class BinanceLinearUserWebsocketApi(WebsocketClient):
 
                 position: PositionData = PositionData(
                     symbol=pos_data["s"],
-                    exchange=Exchange.BINANCE,
+                    exchange=Exchange.GLOBAL,
                     direction=Direction.NET,
                     volume=volume,
                     price=float(pos_data["ep"]),
@@ -819,7 +839,7 @@ class BinanceLinearUserWebsocketApi(WebsocketClient):
 
         order: OrderData = OrderData(
             symbol=ord_data["s"],
-            exchange=Exchange.BINANCE,
+            exchange=Exchange.GLOBAL,
             orderid=str(ord_data["c"]),
             type=order_type,
             direction=DIRECTION_BINANCES2VT[ord_data["S"]],
@@ -940,7 +960,7 @@ class BinanceLinearDataWebsocketApi(WebsocketClient):
         tick: TickData = TickData(
             symbol=req.symbol,
             name=symbol_contract_map[req.symbol].name,
-            exchange=Exchange.BINANCE,
+            exchange=Exchange.GLOBAL,
             datetime=datetime.now(UTC_TZ),
             gateway_name=self.gateway_name,
         )
@@ -955,7 +975,7 @@ class BinanceLinearDataWebsocketApi(WebsocketClient):
         if self.kline_stream:
             channels.append(f"{req.symbol.lower()}@kline_1m")
 
-        req: dict = {
+        req = {
             "method": "SUBSCRIBE",
             "params": channels,
             "id": self.reqid
@@ -1006,7 +1026,7 @@ class BinanceLinearDataWebsocketApi(WebsocketClient):
 
             tick.extra["bar"] = BarData(
                 symbol=symbol.upper(),
-                exchange=Exchange.BINANCE,
+                exchange=Exchange.GLOBAL,
                 datetime=dt.replace(second=0, microsecond=0),
                 interval=Interval.MINUTE,
                 volume=float(kline_data["v"]),
@@ -1143,7 +1163,7 @@ class BinanceLinearTradeWebsocketApi(WebsocketClient):
         }
         self.send_packet(packet)
 
-        return order.vt_orderid
+        return cast(str, order.vt_orderid)
 
     def cancel_order(self, req: CancelRequest) -> None:
         """Cancel existing order"""
@@ -1171,7 +1191,7 @@ class BinanceLinearTradeWebsocketApi(WebsocketClient):
     def on_packet(self, packet: dict) -> None:
         """Callback of data update"""
         reqid: int = packet.get("id", 0)
-        callback: Callable = self.reqid_callback_map.get(reqid, None)
+        callback: Callable | None= self.reqid_callback_map.get(reqid, None)
         if callback:
             callback(packet)
 
@@ -1217,9 +1237,3 @@ def format_float(f: float) -> str:
     Fix potential error -1111: Parameter "quantity" has too much precision
     """
     return format_float_positional(f, trim="-")
-
-
-class BinanceUsdtGateway(BinanceLinearGateway):
-    """Compatibility interface for the old BinanceUsdtGateway"""
-
-    default_name: str = "BINANCE_USDT"
