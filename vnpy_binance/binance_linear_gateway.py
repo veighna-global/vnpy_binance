@@ -152,9 +152,9 @@ class BinanceLinearGateway(BaseGateway):
         """
         super().__init__(event_engine, gateway_name)
 
-        self.trade_ws_api: TradeApi = TradeApi(self)
-        self.user_ws_api: UserApi = UserApi(self)
-        self.market_ws_api: DataApi = DataApi(self)
+        self.trade_api: TradeApi = TradeApi(self)
+        self.user_api: UserApi = UserApi(self)
+        self.data_api: DataApi = DataApi(self)
         self.rest_api: RestApi = RestApi(self)
 
         self.orders: dict[str, OrderData] = {}
@@ -169,22 +169,22 @@ class BinanceLinearGateway(BaseGateway):
         proxy_port: int = setting["Proxy Port"]
 
         self.rest_api.connect(key, secret, server, proxy_host, proxy_port)
-        self.trade_ws_api.connect(key, secret, server, proxy_host, proxy_port)
-        self.market_ws_api.connect(server, kline_stream, proxy_host, proxy_port)
+        self.trade_api.connect(key, secret, server, proxy_host, proxy_port)
+        self.data_api.connect(server, kline_stream, proxy_host, proxy_port)
 
         self.event_engine.register(EVENT_TIMER, self.process_timer_event)
 
     def subscribe(self, req: SubscribeRequest) -> None:
         """Subscribe market data"""
-        self.market_ws_api.subscribe(req)
+        self.data_api.subscribe(req)
 
     def send_order(self, req: OrderRequest) -> str:
         """Send new order"""
-        return self.trade_ws_api.send_order(req)
+        return self.trade_api.send_order(req)
 
     def cancel_order(self, req: CancelRequest) -> None:
         """Cancel existing order"""
-        self.trade_ws_api.cancel_order(req)
+        self.trade_api.cancel_order(req)
 
     def query_account(self) -> None:
         """Not required since Binance provides websocket update"""
@@ -201,9 +201,9 @@ class BinanceLinearGateway(BaseGateway):
     def close(self) -> None:
         """Close server connections"""
         self.rest_api.stop()
-        self.user_ws_api.stop()
-        self.market_ws_api.stop()
-        self.trade_ws_api.stop()
+        self.user_api.stop()
+        self.data_api.stop()
+        self.trade_api.stop()
 
     def process_timer_event(self, event: Event) -> None:
         """Process timer task"""
@@ -233,7 +233,7 @@ class RestApi(RestClient):
         self.gateway: BinanceLinearGateway = gateway
         self.gateway_name: str = gateway.gateway_name
 
-        self.user_ws_api: UserApi = self.gateway.user_ws_api
+        self.user_api: UserApi = self.gateway.user_api
 
         self.key: str = ""
         self.secret: bytes = b""
@@ -389,78 +389,6 @@ class RestApi(RestClient):
             data=data
         )
 
-    def send_order(self, req: OrderRequest) -> str:
-        """Send new order"""
-        # Generate new order id
-        self.order_count += 1
-        orderid: str = self.order_prefix + str(self.order_count)
-
-        # Push a submitting order event
-        order: OrderData = req.create_order_data(
-            orderid,
-            self.gateway_name
-        )
-        self.gateway.on_order(order)
-
-        # Create order parameters
-        data: dict = {"security": Security.SIGNED}
-
-        params: dict = {
-            "symbol": req.symbol,
-            "side": DIRECTION_VT2BINANCES[req.direction],
-            "quantity": format_float(req.volume),
-            "newClientOrderId": orderid,
-        }
-
-        if req.type == OrderType.MARKET:
-            params["type"] = "MARKET"
-        elif req.type == OrderType.STOP:
-            params["type"] = "STOP_MARKET"
-            params["stopPrice"] = format_float(req.price)
-        else:
-            order_type, time_condition = ORDERTYPE_VT2BINANCES[req.type]
-            params["type"] = order_type
-            params["timeInForce"] = time_condition
-            params["price"] = format_float(req.price)
-
-        path: str = "/fapi/v1/order"
-
-        self.add_request(
-            method="POST",
-            path=path,
-            callback=self.on_send_order,
-            data=data,
-            params=params,
-            extra=order,
-            on_error=self.on_send_order_error,
-            on_failed=self.on_send_order_failed
-        )
-
-        return cast(str, order.vt_orderid)
-
-    def cancel_order(self, req: CancelRequest) -> None:
-        """Cancel existing order"""
-        data: dict = {"security": Security.SIGNED}
-
-        params: dict = {
-            "symbol": req.symbol,
-            "origClientOrderId": req.orderid
-        }
-
-        path: str = "/fapi/v1/order"
-
-        order: OrderData = self.gateway.get_order(req.orderid)
-
-        self.add_request(
-            method="DELETE",
-            path=path,
-            callback=self.on_cancel_order,
-            params=params,
-            data=data,
-            on_failed=self.on_cancel_failed,
-            extra=order
-        )
-
     def start_user_stream(self) -> None:
         """Create listen key for user stream"""
         data: dict = {"security": Security.API_KEY}
@@ -611,42 +539,6 @@ class RestApi(RestClient):
 
         self.gateway.write_log("Available contracts data is received")
 
-    def on_send_order(self, data: dict, request: Request) -> None:
-        """Successful callback of send_order"""
-        pass
-
-    def on_send_order_failed(self, status_code: str, request: Request) -> None:
-        """Failed callback of send_order"""
-        order: OrderData = request.extra
-        order.status = Status.REJECTED
-        self.gateway.on_order(order)
-
-        msg: str = f"Send order failed, status code: {status_code}, message: {request.response.text}"
-        self.gateway.write_log(msg)
-
-    def on_send_order_error(self, exception_type: type, exception_value: Exception, tb: Any, request: Request) -> None:
-        """Error callback of send_order"""
-        order: OrderData = request.extra
-        order.status = Status.REJECTED
-        self.gateway.on_order(order)
-
-        if not issubclass(exception_type, ConnectionError):
-            self.on_error(exception_type, exception_value, tb, request)
-
-    def on_cancel_order(self, data: dict, request: Request) -> None:
-        """Successful callback of cancel_order"""
-        pass
-
-    def on_cancel_failed(self, status_code: str, request: Request) -> None:
-        """Failed callback of cancel_order"""
-        if request.extra:
-            order = request.extra
-            order.status = Status.REJECTED
-            self.gateway.on_order(order)
-
-        msg: str = f"Cancel orde failed, status code: {status_code}, message: {request.response.text}, order: {request.extra} "
-        self.gateway.write_log(msg)
-
     def on_start_user_stream(self, data: dict, request: Request) -> None:
         """Successful callback of start_user_stream"""
         self.user_stream_key = data["listenKey"]
@@ -657,7 +549,7 @@ class RestApi(RestClient):
         else:
             url = F_TESTNET_WEBSOCKET_USER_HOST + self.user_stream_key
 
-        self.user_ws_api.connect(url, self.proxy_host, self.proxy_port)
+        self.user_api.connect(url, self.proxy_host, self.proxy_port)
 
     def on_keep_user_stream(self, data: dict, request: Request) -> None:
         """Successful callback of keep_user_stream"""
