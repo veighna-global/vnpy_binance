@@ -112,8 +112,7 @@ WEBSOCKET_TIMEOUT = 24 * 60 * 60
 
 # Global dict for contract data
 symbol_contract_map: dict[str, ContractData] = {}
-
-symbol_map: dict[str, str] = {}         # VeighNa symbol -> Binance symbol
+name_contract_map: dict[str, ContractData] = {}
 
 
 # Authentication level
@@ -153,10 +152,10 @@ class BinanceLinearGateway(BaseGateway):
         """
         super().__init__(event_engine, gateway_name)
 
-        self.trade_ws_api: BinanceLinearTradeWebsocketApi = BinanceLinearTradeWebsocketApi(self)
-        self.user_ws_api: BinanceLinearUserWebsocketApi = BinanceLinearUserWebsocketApi(self)
-        self.market_ws_api: BinanceLinearDataWebsocketApi = BinanceLinearDataWebsocketApi(self)
-        self.rest_api: BinanceLinearRestApi = BinanceLinearRestApi(self)
+        self.trade_ws_api: TradeApi = TradeApi(self)
+        self.user_ws_api: UserApi = UserApi(self)
+        self.market_ws_api: DataApi = DataApi(self)
+        self.rest_api: RestApi = RestApi(self)
 
         self.orders: dict[str, OrderData] = {}
 
@@ -204,6 +203,7 @@ class BinanceLinearGateway(BaseGateway):
         self.rest_api.stop()
         self.user_ws_api.stop()
         self.market_ws_api.stop()
+        self.trade_ws_api.stop()
 
     def process_timer_event(self, event: Event) -> None:
         """Process timer task"""
@@ -219,7 +219,7 @@ class BinanceLinearGateway(BaseGateway):
         return self.orders.get(orderid, None)
 
 
-class BinanceLinearRestApi(RestClient):
+class RestApi(RestClient):
     """The REST API of BinanceLinearGateway"""
 
     def __init__(self, gateway: BinanceLinearGateway) -> None:
@@ -233,7 +233,7 @@ class BinanceLinearRestApi(RestClient):
         self.gateway: BinanceLinearGateway = gateway
         self.gateway_name: str = gateway.gateway_name
 
-        self.user_ws_api: BinanceLinearUserWebsocketApi = self.gateway.user_ws_api
+        self.user_ws_api: UserApi = self.gateway.user_ws_api
 
         self.key: str = ""
         self.secret: bytes = b""
@@ -604,10 +604,10 @@ class BinanceLinearRestApi(RestClient):
                 gateway_name=self.gateway_name,
                 stop_supported=True
             )
-            contract.extra = {"binance_symbol": d["symbol"]}
             self.gateway.on_contract(contract)
 
             symbol_contract_map[contract.symbol] = contract
+            name_contract_map[contract.name] = contract
 
         self.gateway.write_log("Available contracts data is received")
 
@@ -759,7 +759,7 @@ class BinanceLinearRestApi(RestClient):
         return history
 
 
-class BinanceLinearUserWebsocketApi(WebsocketClient):
+class UserApi(WebsocketClient):
     """The user data websocket API of BinanceLinearGateway"""
 
     def __init__(self, gateway: BinanceLinearGateway) -> None:
@@ -889,7 +889,7 @@ class BinanceLinearUserWebsocketApi(WebsocketClient):
         self.gateway.write_log(f"Trade Websocket API exception: {e}")
 
 
-class BinanceLinearDataWebsocketApi(WebsocketClient):
+class DataApi(WebsocketClient):
     """The data websocket API of BinanceLinearGateway"""
 
     def __init__(self, gateway: BinanceLinearGateway) -> None:
@@ -938,19 +938,20 @@ class BinanceLinearDataWebsocketApi(WebsocketClient):
                 if self.kline_stream:
                     channels.append(f"{symbol}@kline_1m")
 
-            req: dict = {
+            packet: dict = {
                 "method": "SUBSCRIBE",
                 "params": channels,
                 "id": self.reqid
             }
-            self.send_packet(req)
+            self.send_packet(packet)
 
     def subscribe(self, req: SubscribeRequest) -> None:
         """Subscribe market data"""
         if req.symbol in self.ticks:
             return
 
-        if req.symbol not in symbol_contract_map:
+        contract: ContractData | None = symbol_contract_map.get(req.symbol, None)
+        if not contract:
             self.gateway.write_log(f"Symbol not found {req.symbol}")
             return
 
@@ -959,40 +960,40 @@ class BinanceLinearDataWebsocketApi(WebsocketClient):
         # Initialize tick object
         tick: TickData = TickData(
             symbol=req.symbol,
-            name=symbol_contract_map[req.symbol].name,
+            name=contract.name,
             exchange=Exchange.GLOBAL,
             datetime=datetime.now(UTC_TZ),
             gateway_name=self.gateway_name,
         )
         tick.extra = {}
-        self.ticks[req.symbol.lower()] = tick
+        self.ticks[req.symbol] = tick
 
-        channels = [
-            f"{req.symbol.lower()}@ticker",
-            f"{req.symbol.lower()}@depth10"
+        channels: list[str] = [
+            f"{contract.name.lower()}@ticker",
+            f"{contract.name.lower()}@depth10"
         ]
 
         if self.kline_stream:
-            channels.append(f"{req.symbol.lower()}@kline_1m")
+            channels.append(f"{contract.name.lower()}@kline_1m")
 
-        req = {
+        packet: dict = {
             "method": "SUBSCRIBE",
             "params": channels,
             "id": self.reqid
         }
-        self.send_packet(req)
+        self.send_packet(packet)
 
     def on_packet(self, packet: dict) -> None:
         """Callback of data update"""
         stream: str = packet.get("stream", None)
-
         if not stream:
             return
 
         data: dict = packet["data"]
 
-        symbol, channel = stream.split("@")
-        tick: TickData = self.ticks[symbol]
+        name, channel = stream.split("@")
+        contract: ContractData = name_contract_map[name.upper()]
+        tick: TickData = self.ticks[contract.symbol]
 
         if channel == "ticker":
             tick.volume = float(data["v"])
@@ -1025,7 +1026,7 @@ class BinanceLinearDataWebsocketApi(WebsocketClient):
             dt: datetime = generate_datetime(float(kline_data["t"]))
 
             tick.extra["bar"] = BarData(
-                symbol=symbol.upper(),
+                symbol=name.upper(),
                 exchange=Exchange.GLOBAL,
                 datetime=dt.replace(second=0, microsecond=0),
                 interval=Interval.MINUTE,
@@ -1053,7 +1054,7 @@ class BinanceLinearDataWebsocketApi(WebsocketClient):
         self.gateway.write_log(f"Data Websocket API exception: {e}")
 
 
-class BinanceLinearTradeWebsocketApi(WebsocketClient):
+class TradeApi(WebsocketClient):
     """The trade websocket API of BinanceLinearGateway"""
 
     def __init__(self, gateway: BinanceLinearGateway) -> None:
