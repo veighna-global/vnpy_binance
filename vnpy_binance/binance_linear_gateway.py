@@ -109,7 +109,6 @@ TIMEDELTA_MAP: dict[Interval, timedelta] = {
 # Set weboscket timeout to 24 hour
 WEBSOCKET_TIMEOUT = 24 * 60 * 60
 
-
 # Global dict for contract data
 symbol_contract_map: dict[str, ContractData] = {}
 name_contract_map: dict[str, ContractData] = {}
@@ -322,7 +321,6 @@ class RestApi(RestClient):
         self.gateway.write_log("REST API started")
 
         self.query_time()
-        self.query_contract()
 
     def query_time(self) -> None:
         """Query server time"""
@@ -435,12 +433,7 @@ class RestApi(RestClient):
 
         self.gateway.write_log(f"Server time updated, local offset: {self.time_offset}ms")
 
-        # Query private data after time offset is calculated
-        if self.key and self.secret:
-            self.query_account()
-            self.query_position()
-            self.query_order()
-            self.start_user_stream()
+        self.query_contract()
 
     def on_query_account(self, data: dict, request: Request) -> None:
         """Callback of account balance query"""
@@ -477,13 +470,17 @@ class RestApi(RestClient):
         """Callback of open orders query"""
         for d in data:
             key: tuple[str, str] = (d["type"], d["timeInForce"])
-            order_type: OrderType = ORDERTYPE_BINANCES2VT.get(key, None)
+            order_type: OrderType | None = ORDERTYPE_BINANCES2VT.get(key, None)
             if not order_type:
+                continue
+
+            contract: ContractData | None = name_contract_map.get(d["symbol"], None)
+            if not contract:
                 continue
 
             order: OrderData = OrderData(
                 orderid=d["clientOrderId"],
-                symbol=d["symbol"],
+                symbol=contract.symbol,
                 exchange=Exchange.GLOBAL,
                 price=float(d["price"]),
                 volume=float(d["origQty"]),
@@ -538,6 +535,13 @@ class RestApi(RestClient):
             name_contract_map[contract.name] = contract
 
         self.gateway.write_log("Available contracts data is received")
+
+        # Query private data after time offset is calculated
+        if self.key and self.secret:
+            self.query_order()
+            self.query_account()
+            self.query_position()
+            self.start_user_stream()
 
     def on_start_user_stream(self, data: dict, request: Request) -> None:
         """Successful callback of start_user_stream"""
@@ -676,12 +680,13 @@ class UserApi(WebsocketClient):
 
     def on_packet(self, packet: dict) -> None:
         """Callback of data update"""
-        if packet["e"] == "ACCOUNT_UPDATE":
-            self.on_account(packet)
-        elif packet["e"] == "ORDER_TRADE_UPDATE":
-            self.on_order(packet)
-        elif packet["e"] == "listenKeyExpired":
-            self.on_listen_key_expired()
+        match packet["e"]:
+            case "ACCOUNT_UPDATE":
+                self.on_account(packet)
+            case "ORDER_TRADE_UPDATE":
+                self.on_order(packet)
+            case "listenKeyExpired":
+                self.on_listen_key_expired()
 
     def on_listen_key_expired(self) -> None:
         """Callback of listen key expired"""
@@ -723,14 +728,22 @@ class UserApi(WebsocketClient):
     def on_order(self, packet: dict) -> None:
         """Callback of order and trade update"""
         ord_data: dict = packet["o"]
+
+        # Filter unsupported order type
         key: tuple[str, str] = (ord_data["o"], ord_data["f"])
-        order_type: OrderType = ORDERTYPE_BINANCES2VT.get(key, None)
+        order_type: OrderType | None = ORDERTYPE_BINANCES2VT.get(key, None)
         if not order_type:
             return
-        offset = self.gateway.get_order(ord_data["c"]).offset if self.gateway.get_order(ord_data["c"]) else None
 
+        # Filter unsupported symbol
+        name: str = ord_data["s"]
+        contract: ContractData | None = name_contract_map.get(name, None)
+        if not contract:
+            return
+
+        # Create and push order
         order: OrderData = OrderData(
-            symbol=ord_data["s"],
+            symbol=contract.symbol,
             exchange=Exchange.GLOBAL,
             orderid=str(ord_data["c"]),
             type=order_type,
@@ -741,20 +754,17 @@ class UserApi(WebsocketClient):
             status=STATUS_BINANCES2VT[ord_data["X"]],
             datetime=generate_datetime(packet["E"]),
             gateway_name=self.gateway_name,
-            offset=offset
         )
 
         self.gateway.on_order(order)
 
         # Round trade volume to meet step size
         trade_volume: float = float(ord_data["l"])
-        contract: ContractData = symbol_contract_map.get(order.symbol, None)
-        if contract:
-            trade_volume = round_to(trade_volume, contract.min_volume)
-
+        trade_volume = round_to(trade_volume, contract.min_volume)
         if not trade_volume:
             return
 
+        # Create and push trade
         trade: TradeData = TradeData(
             symbol=order.symbol,
             exchange=order.exchange,
@@ -765,7 +775,6 @@ class UserApi(WebsocketClient):
             volume=trade_volume,
             datetime=generate_datetime(ord_data["T"]),
             gateway_name=self.gateway_name,
-            offset=offset
         )
         self.gateway.on_trade(trade)
 
@@ -844,7 +853,7 @@ class DataApi(WebsocketClient):
 
         contract: ContractData | None = symbol_contract_map.get(req.symbol, None)
         if not contract:
-            self.gateway.write_log(f"Symbol not found {req.symbol}")
+            self.gateway.write_log(f"Failed to subscribe market data, symbol not found: {req.symbol}")
             return
 
         self.reqid += 1
@@ -1012,6 +1021,12 @@ class TradeApi(WebsocketClient):
 
     def send_order(self, req: OrderRequest) -> str:
         """Send new order"""
+        # Get contract
+        contract: ContractData | None = symbol_contract_map.get(req.symbol, None)
+        if not contract:
+            self.gateway.write_log(f"Failed to send order, symbol not found: {req.symbol}")
+            return ""
+
         # Generate new order id
         self.order_count += 1
         orderid: str = self.order_prefix + str(self.order_count)
@@ -1026,7 +1041,7 @@ class TradeApi(WebsocketClient):
         # Create order parameters
         params: dict = {
             "apiKey": self.key,
-            "symbol": req.symbol,
+            "symbol": contract.name,
             "side": DIRECTION_VT2BINANCES[req.direction],
             "quantity": format_float(req.volume),
             "newClientOrderId": orderid,
@@ -1055,14 +1070,18 @@ class TradeApi(WebsocketClient):
             "params": params,
         }
         self.send_packet(packet)
-
         return cast(str, order.vt_orderid)
 
     def cancel_order(self, req: CancelRequest) -> None:
         """Cancel existing order"""
+        contract: ContractData | None = symbol_contract_map.get(req.symbol, None)
+        if not contract:
+            self.gateway.write_log(f"Failed to cancel order, symbol not found: {req.symbol}")
+            return
+
         params: dict = {
             "apiKey": self.key,
-            "symbol": req.symbol,
+            "symbol": contract.name,
             "origClientOrderId": req.orderid
         }
         self.sign(params)
@@ -1084,7 +1103,7 @@ class TradeApi(WebsocketClient):
     def on_packet(self, packet: dict) -> None:
         """Callback of data update"""
         reqid: int = packet.get("id", 0)
-        callback: Callable | None= self.reqid_callback_map.get(reqid, None)
+        callback: Callable | None = self.reqid_callback_map.get(reqid, None)
         if callback:
             callback(packet)
 
@@ -1096,7 +1115,7 @@ class TradeApi(WebsocketClient):
 
         error_code: str = error["code"]
         error_msg: str = error["msg"]
-        msg: str = f"Send order failed, error code: {error_code}, message: {error_msg}"
+        msg: str = f"Failed to send order, error code: {error_code}, message: {error_msg}"
         self.gateway.write_log(msg)
 
         reqid: int = packet.get("id", 0)
@@ -1113,7 +1132,7 @@ class TradeApi(WebsocketClient):
 
         error_code: str = error["code"]
         error_msg: str = error["msg"]
-        msg: str = f"Cancel order failed, error code: {error_code}, message: {error_msg}"
+        msg: str = f"Failed to cancel order, error code: {error_code}, message: {error_msg}"
         self.gateway.write_log(msg)
 
 
