@@ -620,7 +620,7 @@ class RestApi(RestClient):
 
             self.gateway.on_account(account)
 
-        self.gateway.write_log("Account balance data is received")
+        self.gateway.write_log("Account data received")
 
     def on_query_position(self, data: list, request: Request) -> None:
         """
@@ -651,7 +651,7 @@ class RestApi(RestClient):
 
             self.gateway.on_position(position)
 
-        self.gateway.write_log("Holding positions data is received")
+        self.gateway.write_log("Position data received")
 
     def on_query_order(self, data: list, request: Request) -> None:
         """
@@ -689,7 +689,7 @@ class RestApi(RestClient):
             )
             self.gateway.on_order(order)
 
-        self.gateway.write_log("Open orders data is received")
+        self.gateway.write_log("Order data received")
 
     def on_query_contract(self, data: dict, request: Request) -> None:
         """
@@ -738,7 +738,7 @@ class RestApi(RestClient):
             )
             self.gateway.on_contract(contract)
 
-        self.gateway.write_log("Available contracts data is received")
+        self.gateway.write_log("Contract data received")
 
         # Query private data after time offset is calculated
         if self.key and self.secret:
@@ -941,7 +941,7 @@ class UserApi(WebsocketClient):
         This function is called when the websocket connection to the server
         is successfully established. It logs the connection status.
         """
-        self.gateway.write_log("User data Websocket API is connected")
+        self.gateway.write_log("User API connected")
 
     def on_packet(self, packet: dict) -> None:
         """
@@ -969,7 +969,7 @@ class UserApi(WebsocketClient):
         This function is called when the exchange notifies that the listen key
         has expired. It will log a message and disconnect the websocket connection.
         """
-        self.gateway.write_log("Listen key is expired")
+        self.gateway.write_log("Listen key expired")
         self.disconnect()
 
     def on_account(self, packet: dict) -> None:
@@ -1089,7 +1089,7 @@ class UserApi(WebsocketClient):
             status_code: HTTP status code for the disconnection
             msg: Disconnection message
         """
-        self.gateway.write_log(f"Trade Websocket API is disconnected, code: {status_code}, msg: {msg}")
+        self.gateway.write_log(f"User API disconnected, code: {status_code}, msg: {msg}")
         self.gateway.rest_api.start_user_stream()
 
     def on_error(self, e: Exception) -> None:
@@ -1102,7 +1102,7 @@ class UserApi(WebsocketClient):
         Parameters:
             e: The exception that was raised
         """
-        self.gateway.write_log(f"Trade Websocket API exception: {e}")
+        self.gateway.write_log(f"User API exception: {e}")
 
 
 class MdApi(WebsocketClient):
@@ -1169,7 +1169,7 @@ class MdApi(WebsocketClient):
         is successfully established. It logs the connection status and
         resubscribes to previously subscribed market data channels.
         """
-        self.gateway.write_log("Data Websocket API is connected")
+        self.gateway.write_log("MD API connected")
 
         # Resubscribe market data
         if self.ticks:
@@ -1204,7 +1204,7 @@ class MdApi(WebsocketClient):
 
         contract: ContractData | None = self.gateway.get_contract_by_symbol(req.symbol)
         if not contract:
-            self.gateway.write_log(f"Failed to subscribe market data, symbol not found: {req.symbol}")
+            self.gateway.write_log(f"Failed to subscribe data, symbol not found: {req.symbol}")
             return
 
         self.reqid += 1
@@ -1315,7 +1315,7 @@ class MdApi(WebsocketClient):
             status_code: HTTP status code for the disconnection
             msg: Disconnection message
         """
-        self.gateway.write_log(f"Data Websocket API is disconnected, code: {status_code}, msg: {msg}")
+        self.gateway.write_log(f"MD API disconnected, code: {status_code}, msg: {msg}")
 
     def on_error(self, e: Exception) -> None:
         """
@@ -1327,7 +1327,7 @@ class MdApi(WebsocketClient):
         Parameters:
             e: The exception that was raised
         """
-        self.gateway.write_log(f"Data Websocket API exception: {e}")
+        self.gateway.write_log(f"MD API exception: {e}")
 
 
 class TradeApi(WebsocketClient):
@@ -1528,7 +1528,20 @@ class TradeApi(WebsocketClient):
         This function is called when the trading websocket connection
         is successfully established. It logs the connection status.
         """
-        self.gateway.write_log("Trade Websocket API is connected")
+        self.gateway.write_log("Trade API connected")
+
+    def on_disconnected(self, status_code: int, msg: str) -> None:
+        """
+        Callback when server is disconnected.
+
+        This function is called when the trading websocket connection
+        is closed. It logs the disconnection details.
+
+        Parameters:
+            status_code: HTTP status code for the disconnection
+            msg: Disconnection message
+        """
+        self.gateway.write_log(f"Trade API disconnected, code: {status_code}, msg: {msg}")
 
     def on_packet(self, packet: dict) -> None:
         """
@@ -1562,7 +1575,7 @@ class TradeApi(WebsocketClient):
 
         error_code: str = error["code"]
         error_msg: str = error["msg"]
-        msg: str = f"Failed to send order, error code: {error_code}, message: {error_msg}"
+        msg: str = f"Order rejected, code: {error_code}, message: {error_msg}"
         self.gateway.write_log(msg)
 
         reqid: int = packet.get("id", 0)
@@ -1587,8 +1600,20 @@ class TradeApi(WebsocketClient):
 
         error_code: str = error["code"]
         error_msg: str = error["msg"]
-        msg: str = f"Failed to cancel order, error code: {error_code}, message: {error_msg}"
+        msg: str = f"Cancel rejected, code: {error_code}, message: {error_msg}"
         self.gateway.write_log(msg)
+
+    def on_error(self, e: Exception) -> None:
+        """
+        Callback when exception raised.
+
+        This function is called when an exception occurs in the trading
+        websocket connection. It logs the exception details for troubleshooting.
+
+        Parameters:
+            e: The exception that was raised
+        """
+        self.gateway.write_log(f"Trade API exception: {e}")
 
 
 def generate_datetime(timestamp: float) -> datetime:
