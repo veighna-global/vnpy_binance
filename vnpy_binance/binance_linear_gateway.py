@@ -44,19 +44,19 @@ from vnpy_websocket import WebsocketClient
 UTC_TZ = ZoneInfo("UTC")
 
 # Real server hosts
-F_REST_HOST: str = "https://fapi.binance.com"
-F_WEBSOCKET_TRADE_HOST: str = "wss://ws-fapi.binance.com/ws-fapi/v1"
-F_WEBSOCKET_USER_HOST: str = "wss://fstream.binance.com/ws/"
-F_WEBSOCKET_DATA_HOST: str = "wss://fstream.binance.com/stream"
+REAL_REST_HOSTT: str = "https://fapi.binance.com"
+REAL_TRADE_HOST: str = "wss://ws-fapi.binance.com/ws-fapi/v1"
+REAL_USER_HOST: str = "wss://fstream.binance.com/ws/"
+REAL_DATA_HOST: str = "wss://fstream.binance.com/stream"
 
 # Testnet server hosts
-F_TESTNET_REST_HOST: str = "https://testnet.binancefuture.com"
-F_TESTNET_WEBSOCKET_TRADE_HOST: str = "wss://testnet.binancefuture.com/ws-fapi/v1"
-F_TESTNET_WEBSOCKET_USER_HOST: str = "wss://stream.binancefuture.com/ws/"
-F_TESTNET_WEBSOCKET_DATA_HOST: str = "wss://stream.binancefuture.com/stream"
+TESTNET_REST_HOST: str = "https://testnet.binancefuture.com"
+TESTNET_TRADE_HOST: str = "wss://testnet.binancefuture.com/ws-fapi/v1"
+TESTNET_USER_HOST: str = "wss://stream.binancefuture.com/ws/"
+TESTNET_DATA_HOST: str = "wss://stream.binancefuture.com/stream"
 
 # Order status map
-STATUS_BINANCES2VT: dict[str, Status] = {
+STATUS_BINANCE2VT: dict[str, Status] = {
     "NEW": Status.NOTTRADED,
     "PARTIALLY_FILLED": Status.PARTTRADED,
     "FILLED": Status.ALLTRADED,
@@ -66,20 +66,20 @@ STATUS_BINANCES2VT: dict[str, Status] = {
 }
 
 # Order type map
-ORDERTYPE_VT2BINANCES: dict[OrderType, tuple[str, str]] = {
+ORDERTYPE_VT2BINANCE: dict[OrderType, tuple[str, str]] = {
     OrderType.LIMIT: ("LIMIT", "GTC"),
     OrderType.MARKET: ("MARKET", "GTC"),
     OrderType.FAK: ("LIMIT", "IOC"),
     OrderType.FOK: ("LIMIT", "FOK"),
 }
-ORDERTYPE_BINANCES2VT: dict[tuple[str, str], OrderType] = {v: k for k, v in ORDERTYPE_VT2BINANCES.items()}
+ORDERTYPE_BINANCE2VT: dict[tuple[str, str], OrderType] = {v: k for k, v in ORDERTYPE_VT2BINANCE.items()}
 
 # Direction map
-DIRECTION_VT2BINANCES: dict[Direction, str] = {
+DIRECTION_VT2BINANCE: dict[Direction, str] = {
     Direction.LONG: "BUY",
     Direction.SHORT: "SELL"
 }
-DIRECTION_BINANCES2VT: dict[str, Direction] = {v: k for k, v in DIRECTION_VT2BINANCES.items()}
+DIRECTION_BINANCE2VT: dict[str, Direction] = {v: k for k, v in DIRECTION_VT2BINANCE.items()}
 
 # Product map
 PRODUCT_BINANCE2VT: dict[str, Product] = {
@@ -92,7 +92,7 @@ PRODUCT_BINANCE2VT: dict[str, Product] = {
 }
 
 # Kline interval map
-INTERVAL_VT2BINANCES: dict[Interval, str] = {
+INTERVAL_VT2BINANCE: dict[Interval, str] = {
     Interval.MINUTE: "1m",
     Interval.HOUR: "1h",
     Interval.DAILY: "1d",
@@ -150,10 +150,10 @@ class BinanceLinearGateway(BaseGateway):
         """
         super().__init__(event_engine, gateway_name)
 
+        self.rest_api: RestApi = RestApi(self)
         self.trade_api: TradeApi = TradeApi(self)
         self.user_api: UserApi = UserApi(self)
-        self.data_api: DataApi = DataApi(self)
-        self.rest_api: RestApi = RestApi(self)
+        self.md_api: MdApi = MdApi(self)
 
         self.orders: dict[str, OrderData] = {}
 
@@ -311,9 +311,9 @@ class RestApi(RestClient):
         self.order_prefix = datetime.now().strftime("%y%m%d%H%M%S")
 
         if self.server == "REAL":
-            self.init(F_REST_HOST, proxy_host, proxy_port)
+            self.init(REAL_REST_HOSTT, proxy_host, proxy_port)
         else:
-            self.init(F_TESTNET_REST_HOST, proxy_host, proxy_port)
+            self.init(TESTNET_REST_HOST, proxy_host, proxy_port)
 
         self.start()
 
@@ -474,7 +474,7 @@ class RestApi(RestClient):
         """Callback of open orders query"""
         for d in data:
             key: tuple[str, str] = (d["type"], d["timeInForce"])
-            order_type: OrderType | None = ORDERTYPE_BINANCES2VT.get(key, None)
+            order_type: OrderType | None = ORDERTYPE_BINANCE2VT.get(key, None)
             if not order_type:
                 continue
 
@@ -489,9 +489,9 @@ class RestApi(RestClient):
                 price=float(d["price"]),
                 volume=float(d["origQty"]),
                 type=order_type,
-                direction=DIRECTION_BINANCES2VT[d["side"]],
+                direction=DIRECTION_BINANCE2VT[d["side"]],
                 traded=float(d["executedQty"]),
-                status=STATUS_BINANCES2VT.get(d["status"], None),
+                status=STATUS_BINANCE2VT.get(d["status"], None),
                 datetime=generate_datetime(d["time"]),
                 gateway_name=self.gateway_name,
             )
@@ -553,9 +553,9 @@ class RestApi(RestClient):
         self.keep_alive_count = 0
 
         if self.server == "REAL":
-            url = F_WEBSOCKET_USER_HOST + self.user_stream_key
+            url = REAL_USER_HOST + self.user_stream_key
         else:
-            url = F_TESTNET_WEBSOCKET_USER_HOST + self.user_stream_key
+            url = TESTNET_USER_HOST + self.user_stream_key
 
         self.user_api.connect(url, self.proxy_host, self.proxy_port)
 
@@ -579,7 +579,7 @@ class RestApi(RestClient):
             # Create query parameters
             params: dict = {
                 "symbol": req.symbol,
-                "interval": INTERVAL_VT2BINANCES[req.interval],
+                "interval": INTERVAL_VT2BINANCE[req.interval],
                 "limit": limit
             }
 
@@ -740,7 +740,7 @@ class UserApi(WebsocketClient):
 
         # Filter unsupported order type
         key: tuple[str, str] = (ord_data["o"], ord_data["f"])
-        order_type: OrderType | None = ORDERTYPE_BINANCES2VT.get(key, None)
+        order_type: OrderType | None = ORDERTYPE_BINANCE2VT.get(key, None)
         if not order_type:
             return
 
@@ -756,11 +756,11 @@ class UserApi(WebsocketClient):
             exchange=Exchange.GLOBAL,
             orderid=str(ord_data["c"]),
             type=order_type,
-            direction=DIRECTION_BINANCES2VT[ord_data["S"]],
+            direction=DIRECTION_BINANCE2VT[ord_data["S"]],
             price=float(ord_data["p"]),
             volume=float(ord_data["q"]),
             traded=float(ord_data["z"]),
-            status=STATUS_BINANCES2VT[ord_data["X"]],
+            status=STATUS_BINANCE2VT[ord_data["X"]],
             datetime=generate_datetime(packet["E"]),
             gateway_name=self.gateway_name,
         )
@@ -799,7 +799,7 @@ class UserApi(WebsocketClient):
         self.gateway.write_log(f"Trade Websocket API exception: {e}")
 
 
-class DataApi(WebsocketClient):
+class MdApi(WebsocketClient):
     """The data websocket API of BinanceLinearGateway"""
 
     def __init__(self, gateway: BinanceLinearGateway) -> None:
@@ -828,9 +828,9 @@ class DataApi(WebsocketClient):
         self.kline_stream = kline_stream
 
         if server == "REAL":
-            self.init(F_WEBSOCKET_DATA_HOST, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
+            self.init(REAL_DATA_HOST, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
         else:
-            self.init(F_TESTNET_WEBSOCKET_DATA_HOST, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
+            self.init(TESTNET_DATA_HOST, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
 
         self.start()
 
@@ -1009,9 +1009,9 @@ class TradeApi(WebsocketClient):
         self.order_prefix = datetime.now().strftime("%y%m%d%H%M%S")
 
         if self.server == "REAL":
-            self.init(F_WEBSOCKET_TRADE_HOST, proxy_host, proxy_port)
+            self.init(REAL_TRADE_HOST, proxy_host, proxy_port)
         else:
-            self.init(F_TESTNET_WEBSOCKET_TRADE_HOST, proxy_host, proxy_port)
+            self.init(TESTNET_TRADE_HOST, proxy_host, proxy_port)
 
         self.start()
 
@@ -1051,7 +1051,7 @@ class TradeApi(WebsocketClient):
         params: dict = {
             "apiKey": self.key,
             "symbol": contract.name,
-            "side": DIRECTION_VT2BINANCES[req.direction],
+            "side": DIRECTION_VT2BINANCE[req.direction],
             "quantity": format_float(req.volume),
             "newClientOrderId": orderid,
         }
@@ -1062,7 +1062,7 @@ class TradeApi(WebsocketClient):
             params["type"] = "STOP_MARKET"
             params["stopPrice"] = format_float(req.price)
         else:
-            order_type, time_condition = ORDERTYPE_VT2BINANCES[req.type]
+            order_type, time_condition = ORDERTYPE_VT2BINANCE[req.type]
             params["type"] = order_type
             params["timeInForce"] = time_condition
             params["price"] = format_float(req.price)
