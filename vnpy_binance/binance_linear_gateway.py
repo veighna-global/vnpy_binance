@@ -146,10 +146,10 @@ class BinanceLinearGateway(BaseGateway):
         """
         super().__init__(event_engine, gateway_name)
 
-        self.rest_api: RestApi = RestApi(self)
         self.trade_api: TradeApi = TradeApi(self)
         self.user_api: UserApi = UserApi(self)
         self.md_api: MdApi = MdApi(self)
+        self.rest_api: RestApi = RestApi(self)
 
         self.orders: dict[str, OrderData] = {}
         self.symbol_contract_map: dict[str, ContractData] = {}
@@ -579,15 +579,22 @@ class RestApi(RestClient):
 
     def query_history(self, req: HistoryRequest) -> list[BarData]:
         """Query kline history data"""
+        # Check if the contract exists
+        contract: ContractData | None = self.gateway.get_contract_by_symbol(req.symbol)
+        if not contract:
+            return []
+
+        # Prepare history list
         history: list[BarData] = []
         limit: int = 1500
 
+        # Convert start time to milliseconds
         start_time: int = int(datetime.timestamp(req.start))
 
         while True:
             # Create query parameters
             params: dict = {
-                "symbol": req.symbol,
+                "symbol": contract.name,
                 "interval": INTERVAL_VT2BINANCE[req.interval],
                 "limit": limit
             }
