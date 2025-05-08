@@ -1,15 +1,16 @@
-from vnpy_evo.event import EventEngine
-from vnpy_evo.trader.engine import MainEngine
-from vnpy_evo.trader.ui import MainWindow, create_qapp
+from vnpy.event import EventEngine
+from vnpy.trader.engine import MainEngine
+from vnpy.trader.ui import MainWindow, create_qapp
 
 from vnpy_binance import (
     BinanceSpotGateway,
     BinanceLinearGateway,
     BinanceInverseGateway
 )
+from vnpy_datamanager import DataManagerApp
 
 
-def main():
+def main() -> None:
     """主入口函数"""
     qapp = create_qapp()
 
@@ -18,6 +19,8 @@ def main():
     main_engine.add_gateway(BinanceSpotGateway)
     main_engine.add_gateway(BinanceLinearGateway)
     main_engine.add_gateway(BinanceInverseGateway)
+
+    main_engine.add_app(DataManagerApp)
 
     main_window = MainWindow(main_engine, event_engine)
     main_window.showMaximized()

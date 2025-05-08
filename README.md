@@ -1,4 +1,4 @@
-# Binance trading gateway for VeighNa Evo
+# Binance trading gateway for VeighNa
 
 <p align="center">
   <img src ="https://github.com/veighna-global/vnpy_evo/blob/dev/logo.png" width="300" height="300"/>
@@ -8,7 +8,7 @@
     <img src ="https://img.shields.io/badge/version-2025.1.25-blueviolet.svg"/>
     <img src ="https://img.shields.io/badge/platform-windows|linux|macos-yellow.svg"/>
     <img src ="https://img.shields.io/badge/python-3.10|3.11|3.12-blue.svg"/>
-    <img src ="https://img.shields.io/github/license/veighna-global/vnpy_evo.svg?color=orange"/>
+    <img src ="https://img.shields.io/github/license/veighna-global/vnpy_binance.svg?color=orange"/>
 </p>
 
 
@@ -42,9 +42,9 @@ python setup.py install
 Save this as run.py.
 
 ```
-from vnpy_evo.event import EventEngine
-from vnpy_evo.trader.engine import MainEngine
-from vnpy_evo.trader.ui import MainWindow, create_qapp
+from vnpy.event import EventEngine
+from vnpy.trader.engine import MainEngine
+from vnpy.trader.ui import MainWindow, create_qapp
 
 from vnpy_binance import (
     BinanceSpotGateway,

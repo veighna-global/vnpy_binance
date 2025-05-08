@@ -20,9 +20,12 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from .binance_spot_gateway import BinanceSpotGateway
-from .binance_linear_gateway import BinanceLinearGateway, BinanceUsdtGateway
-from .binance_inverse_gateway import BinanceInverseGateway
+from .linear_gateway import BinanceLinearGateway
 
 
-__version__ = "2025.1.25"
+__version__ = "2025.05.08"
+
+
+__all__ = [
+    "BinanceLinearGateway",
+]
