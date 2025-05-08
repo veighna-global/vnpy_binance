@@ -112,8 +112,13 @@ class BinanceLinearGateway(BaseGateway):
     """
     The Binance linear trading gateway for VeighNa.
 
+    This gateway provides trading functionality for Binance USDT perpetual contracts
+    and delivery futures through their API.
+
+    Features:
     1. Only support crossed position
     2. Only support one-way mode
+    3. Provides market data, trading, and account management capabilities
     """
 
     default_name: str = "BINANCE_LINEAR"
@@ -133,8 +138,13 @@ class BinanceLinearGateway(BaseGateway):
         """
         The init method of the gateway.
 
-        event_engine: the global event engine object of VeighNa
-        gateway_name: the unique name for identifying the gateway
+        This method initializes the gateway components including REST API,
+        trading API, user data API, and market data API. It also sets up
+        the data structures for order and contract storage.
+
+        Parameters:
+            event_engine: the global event engine object of VeighNa
+            gateway_name: the unique name for identifying the gateway
         """
         super().__init__(event_engine, gateway_name)
 
@@ -148,7 +158,16 @@ class BinanceLinearGateway(BaseGateway):
         self.name_contract_map: dict[str, ContractData] = {}
 
     def connect(self, setting: dict) -> None:
-        """Start server connections"""
+        """
+        Start server connections.
+
+        This method establishes connections to Binance servers
+        using the provided settings.
+
+        Parameters:
+            setting: A dictionary containing connection parameters including
+                    API credentials, server selection, and proxy configuration
+        """
         key: str = setting["API Key"]
         secret: str = setting["API Secret"]
         server: str = setting["Server"]
@@ -163,72 +182,173 @@ class BinanceLinearGateway(BaseGateway):
         self.event_engine.register(EVENT_TIMER, self.process_timer_event)
 
     def subscribe(self, req: SubscribeRequest) -> None:
-        """Subscribe market data"""
+        """
+        Subscribe to market data.
+
+        This method forwards the subscription request to the market data API.
+
+        Parameters:
+            req: Subscription request object containing the symbol to subscribe
+        """
         self.md_api.subscribe(req)
 
     def send_order(self, req: OrderRequest) -> str:
-        """Send new order"""
+        """
+        Send new order.
+
+        This method forwards the order request to the trading API.
+
+        Parameters:
+            req: Order request object containing order details
+
+        Returns:
+            str: The VeighNa order ID if successful, empty string if failed
+        """
         return self.trade_api.send_order(req)
 
     def cancel_order(self, req: CancelRequest) -> None:
-        """Cancel existing order"""
+        """
+        Cancel existing order.
+
+        This method forwards the cancellation request to the trading API.
+
+        Parameters:
+            req: Cancel request object containing order details
+        """
         self.trade_api.cancel_order(req)
 
     def query_account(self) -> None:
-        """Not required since Binance provides websocket update"""
+        """
+        Query account balance.
+
+        Not required since Binance provides websocket updates for account balances.
+        """
         pass
 
     def query_position(self) -> None:
-        """Not required since Binance provides websocket update"""
+        """
+        Query current positions.
+
+        Not required since Binance provides websocket updates for positions.
+        """
         pass
 
     def query_history(self, req: HistoryRequest) -> list[BarData]:
-        """Query kline history data"""
+        """
+        Query historical kline data.
+
+        This method forwards the history request to the REST API.
+
+        Parameters:
+            req: History request object containing query parameters
+
+        Returns:
+            list[BarData]: List of historical kline data bars
+        """
         return self.rest_api.query_history(req)
 
     def close(self) -> None:
-        """Close server connections"""
+        """
+        Close server connections.
+
+        This method stops all API connections and releases resources.
+        """
         self.rest_api.stop()
         self.user_api.stop()
         self.md_api.stop()
         self.trade_api.stop()
 
     def process_timer_event(self, event: Event) -> None:
-        """Process timer task"""
+        """
+        Process timer task.
+
+        This function is called regularly by the event engine to perform scheduled tasks,
+        such as keeping the user stream alive.
+
+        Parameters:
+            event: Timer event object
+        """
         self.rest_api.keep_user_stream()
 
     def on_order(self, order: OrderData) -> None:
-        """Save a copy of order and then push"""
+        """
+        Save a copy of order and then push to event engine.
+
+        Parameters:
+            order: Order data object
+        """
         self.orders[order.orderid] = copy(order)
         super().on_order(order)
 
     def get_order(self, orderid: str) -> OrderData:
-        """Get previously saved order"""
+        """
+        Get previously saved order by order id.
+
+        Parameters:
+            orderid: The ID of the order to retrieve
+
+        Returns:
+            Order data object if found, None otherwise
+        """
         return self.orders.get(orderid, None)
 
     def on_contract(self, contract: ContractData) -> None:
-        """Save contract data"""
+        """
+        Save contract data in mappings and push to event engine.
+
+        Parameters:
+            contract: Contract data object
+        """
         self.symbol_contract_map[contract.symbol] = contract
         self.name_contract_map[contract.name] = contract
         super().on_contract(contract)
 
     def get_contract_by_symbol(self, symbol: str) -> ContractData | None:
-        """Get contract data by symbol"""
+        """
+        Get contract data by VeighNa symbol.
+
+        Parameters:
+            symbol: VeighNa symbol (e.g. "BTC_SWAP_BINANCE")
+
+        Returns:
+            Contract data object if found, None otherwise
+        """
         return self.symbol_contract_map.get(symbol, None)
 
     def get_contract_by_name(self, name: str) -> ContractData | None:
-        """Get contract data by name"""
+        """
+        Get contract data by exchange symbol name.
+
+        Parameters:
+            name: Exchange symbol name (e.g. "BTCUSDT")
+
+        Returns:
+            Contract data object if found, None otherwise
+        """
         return self.name_contract_map.get(name, None)
 
 
 class RestApi(RestClient):
-    """The REST API of BinanceLinearGateway"""
+    """
+    The REST API of BinanceLinearGateway.
+
+    This class handles HTTP requests to Binance API endpoints, including:
+    - Authentication and signature generation
+    - Contract information queries
+    - Account and position queries
+    - Order management
+    - Historical data queries
+    - User data stream management
+    """
 
     def __init__(self, gateway: BinanceLinearGateway) -> None:
         """
-        The init method of the api.
+        The init method of the API.
 
-        gateway: the parent gateway object for pushing callback data.
+        This method initializes the REST API with a reference to the parent gateway.
+
+        Parameters:
+            gateway: the parent gateway object for pushing callback data
         """
         super().__init__()
 
@@ -248,7 +368,24 @@ class RestApi(RestClient):
         self.order_prefix: str = ""
 
     def sign(self, request: Request) -> Request:
-        """Standard callback for signing a request"""
+        """
+        Standard callback for signing a request.
+
+        This method adds the necessary authentication parameters and signature
+        to requests that require API key authentication.
+
+        It handles:
+        1. Path construction with query parameters
+        2. Timestamp generation with server time offset adjustment
+        3. HMAC-SHA256 signature generation
+        4. Required authentication headers
+
+        Parameters:
+            request: Request object to be signed
+
+        Returns:
+            Request: Modified request with authentication parameters
+        """
         # Construct path with query parameters if they exist
         if request.params:
             path: str = request.path + "?" + urllib.parse.urlencode(request.params)
@@ -288,7 +425,7 @@ class RestApi(RestClient):
         # Add required headers for API authentication
         request.headers = {
             "Content-Type": "application/x-www-form-urlencoded",
-            "Accept": "application/json", 
+            "Accept": "application/json",
             "X-MBX-APIKEY": self.key,
             "Connection": "close"
         }
@@ -324,7 +461,12 @@ class RestApi(RestClient):
         self.query_time()
 
     def query_time(self) -> None:
-        """Query server time"""
+        """
+        Query server time to calculate local time offset.
+
+        This function sends a request to get the exchange server time,
+        which is used to calculate the local time offset for timestamp synchronization.
+        """
         path: str = "/fapi/v1/time"
 
         self.add_request(
@@ -334,7 +476,12 @@ class RestApi(RestClient):
         )
 
     def query_account(self) -> None:
-        """Query account balance"""
+        """
+        Query account balance.
+
+        This function sends a request to get the account balance information,
+        including wallet balance, available balance, and margin.
+        """
         path: str = "/fapi/v3/account"
 
         self.add_request(
@@ -344,7 +491,12 @@ class RestApi(RestClient):
         )
 
     def query_position(self) -> None:
-        """Query holding positions"""
+        """
+        Query holding positions.
+
+        This function sends a request to get current position data,
+        including position amount, entry price, and unrealized profit/loss.
+        """
         path: str = "/fapi/v3/positionRisk"
 
         self.add_request(
@@ -354,7 +506,12 @@ class RestApi(RestClient):
         )
 
     def query_order(self) -> None:
-        """Query open orders"""
+        """
+        Query open orders.
+
+        This function sends a request to get all active orders
+        that have not been fully filled or cancelled.
+        """
         path: str = "/fapi/v1/openOrders"
 
         self.add_request(
@@ -364,7 +521,13 @@ class RestApi(RestClient):
         )
 
     def query_contract(self) -> None:
-        """Query available contracts"""
+        """
+        Query available contracts.
+
+        This function sends a request to get exchange information,
+        including all available trading instruments, their precision,
+        and trading rules.
+        """
         path: str = "/fapi/v1/exchangeInfo"
 
         self.add_request(
@@ -374,7 +537,12 @@ class RestApi(RestClient):
         )
 
     def start_user_stream(self) -> None:
-        """Create listen key for user stream"""
+        """
+        Create listen key for user stream.
+
+        This function sends a request to create a listen key which is
+        required to establish a user data websocket connection.
+        """
         path: str = "/fapi/v1/listenKey"
 
         self.add_request(
@@ -384,7 +552,13 @@ class RestApi(RestClient):
         )
 
     def keep_user_stream(self) -> None:
-        """Extend listen key validity"""
+        """
+        Extend listen key validity.
+
+        This function sends a request to keep the listen key active,
+        which is required to maintain the user data websocket connection.
+        The listen key will expire after 60 minutes if not refreshed.
+        """
         if not self.user_stream_key:
             return
 
@@ -406,7 +580,17 @@ class RestApi(RestClient):
         )
 
     def on_query_time(self, data: dict, request: Request) -> None:
-        """Callback of server time query"""
+        """
+        Callback of server time query.
+
+        This function processes the server time response and calculates
+        the time offset between local and server time, which is used for
+        request timestamp synchronization.
+
+        Parameters:
+            data: Response data from the server
+            request: Original request object
+        """
         local_time: int = int(time.time() * 1000)
         server_time: int = int(data["serverTime"])
         self.time_offset = local_time - server_time
@@ -416,7 +600,16 @@ class RestApi(RestClient):
         self.query_contract()
 
     def on_query_account(self, data: dict, request: Request) -> None:
-        """Callback of account balance query"""
+        """
+        Callback of account balance query.
+
+        This function processes the account balance response and
+        creates AccountData objects for each asset in the account.
+
+        Parameters:
+            data: Response data from the server
+            request: Original request object
+        """
         for asset in data["assets"]:
             account: AccountData = AccountData(
                 accountid=asset["asset"],
@@ -430,7 +623,16 @@ class RestApi(RestClient):
         self.gateway.write_log("Account balance data is received")
 
     def on_query_position(self, data: list, request: Request) -> None:
-        """Callback of holding positions query"""
+        """
+        Callback of holding positions query.
+
+        This function processes the position data response and
+        creates PositionData objects for each position held.
+
+        Parameters:
+            data: Response data from the server
+            request: Original request object
+        """
         for d in data:
             name: str = d["symbol"]
             contract: ContractData | None = self.gateway.get_contract_by_name(name)
@@ -452,7 +654,16 @@ class RestApi(RestClient):
         self.gateway.write_log("Holding positions data is received")
 
     def on_query_order(self, data: list, request: Request) -> None:
-        """Callback of open orders query"""
+        """
+        Callback of open orders query.
+
+        This function processes the open orders response and
+        creates OrderData objects for each active order.
+
+        Parameters:
+            data: Response data from the server
+            request: Original request object
+        """
         for d in data:
             key: tuple[str, str] = (d["type"], d["timeInForce"])
             order_type: OrderType | None = ORDERTYPE_BINANCE2VT.get(key, None)
@@ -481,7 +692,18 @@ class RestApi(RestClient):
         self.gateway.write_log("Open orders data is received")
 
     def on_query_contract(self, data: dict, request: Request) -> None:
-        """Callback of available contracts query"""
+        """
+        Callback of available contracts query.
+
+        This function processes the exchange info response and
+        creates ContractData objects for each trading instrument.
+        It handles different contract types and extracts trading rules
+        like price tick, minimum/maximum volumes from filters.
+
+        Parameters:
+            data: Response data from the server
+            request: Original request object
+        """
         for d in data["symbols"]:
             pricetick: float = 1
             min_volume: float = 1
@@ -526,7 +748,16 @@ class RestApi(RestClient):
             self.start_user_stream()
 
     def on_start_user_stream(self, data: dict, request: Request) -> None:
-        """Successful callback of start_user_stream"""
+        """
+        Successful callback of start_user_stream.
+
+        This function processes the listen key response and initializes
+        the user data websocket connection with the provided key.
+
+        Parameters:
+            data: Response data from the server containing the listen key
+            request: Original request object
+        """
         self.user_stream_key = data["listenKey"]
         self.keep_alive_count = 0
 
@@ -538,11 +769,31 @@ class RestApi(RestClient):
         self.user_api.connect(url, self.proxy_host, self.proxy_port)
 
     def on_keep_user_stream(self, data: dict, request: Request) -> None:
-        """Successful callback of keep_user_stream"""
+        """
+        Successful callback of keep_user_stream.
+
+        This function handles the successful response of the listen key
+        refresh request. No action is needed on success.
+
+        Parameters:
+            data: Response data from the server
+            request: Original request object
+        """
         pass
 
     def on_keep_user_stream_error(self, exception_type: type, exception_value: Exception, tb: Any, request: Request) -> None:
-        """Error callback of keep_user_stream"""
+        """
+        Error callback of keep_user_stream.
+
+        This function handles errors from the listen key refresh request.
+        Timeout exceptions are ignored as they are common and non-critical.
+
+        Parameters:
+            exception_type: Type of the exception
+            exception_value: Exception instance
+            tb: Traceback object
+            request: Original request object
+        """
         if not issubclass(exception_type, TimeoutError):        # Ignore timeout exception
             self.on_error(exception_type, exception_value, tb, request)
 
@@ -644,13 +895,25 @@ class RestApi(RestClient):
 
 
 class UserApi(WebsocketClient):
-    """The user data websocket API of BinanceLinearGateway"""
+    """
+    The user data websocket API of BinanceLinearGateway.
+
+    This class handles user data events from Binance through websocket connection.
+    It processes real-time updates for:
+    - Account balance changes
+    - Position updates
+    - Order status changes
+    - Trade executions
+    """
 
     def __init__(self, gateway: BinanceLinearGateway) -> None:
         """
-        The init method of the api.
+        The init method of the API.
 
-        gateway: the parent gateway object for pushing callback data.
+        This method initializes the websocket client with a reference to the parent gateway.
+
+        Parameters:
+            gateway: the parent gateway object for pushing callback data
         """
         super().__init__()
 
@@ -658,16 +921,39 @@ class UserApi(WebsocketClient):
         self.gateway_name: str = gateway.gateway_name
 
     def connect(self, url: str, proxy_host: str, proxy_port: int) -> None:
-        """Start server connection"""
+        """
+        Start server connection.
+
+        This method establishes a websocket connection to Binance user data stream.
+
+        Parameters:
+            url: Websocket endpoint URL with listen key
+            proxy_host: Proxy server hostname or IP
+            proxy_port: Proxy server port
+        """
         self.init(url, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
         self.start()
 
     def on_connected(self) -> None:
-        """Callback when server is connected"""
+        """
+        Callback when server is connected.
+
+        This function is called when the websocket connection to the server
+        is successfully established. It logs the connection status.
+        """
         self.gateway.write_log("User data Websocket API is connected")
 
     def on_packet(self, packet: dict) -> None:
-        """Callback of data update"""
+        """
+        Callback of data update.
+
+        This function processes websocket messages from the user data stream.
+        It handles different event types including account updates, order updates,
+        and listen key expiration.
+
+        Parameters:
+            packet: JSON data received from websocket
+        """
         match packet["e"]:
             case "ACCOUNT_UPDATE":
                 self.on_account(packet)
@@ -677,12 +963,25 @@ class UserApi(WebsocketClient):
                 self.on_listen_key_expired()
 
     def on_listen_key_expired(self) -> None:
-        """Callback of listen key expired"""
+        """
+        Callback of listen key expired.
+
+        This function is called when the exchange notifies that the listen key
+        has expired. It will log a message and disconnect the websocket connection.
+        """
         self.gateway.write_log("Listen key is expired")
         self.disconnect()
 
     def on_account(self, packet: dict) -> None:
-        """Callback of account balance and holding position update"""
+        """
+        Callback of account balance and holding position update.
+
+        This function processes the account update event from the user data stream,
+        including balance changes and position updates.
+
+        Parameters:
+            packet: JSON data received from websocket
+        """
         for acc_data in packet["a"]["B"]:
             account: AccountData = AccountData(
                 accountid=acc_data["a"],
@@ -719,7 +1018,15 @@ class UserApi(WebsocketClient):
                 self.gateway.on_position(position)
 
     def on_order(self, packet: dict) -> None:
-        """Callback of order and trade update"""
+        """
+        Callback of order and trade update.
+
+        This function processes the order update event from the user data stream,
+        including order status changes and trade executions.
+
+        Parameters:
+            packet: JSON data received from websocket
+        """
         ord_data: dict = packet["o"]
 
         # Filter unsupported order type
@@ -772,25 +1079,51 @@ class UserApi(WebsocketClient):
         self.gateway.on_trade(trade)
 
     def on_disconnected(self, status_code: int, msg: str) -> None:
-        """Callback when server is disconnected"""
+        """
+        Callback when server is disconnected.
+
+        This function is called when the websocket connection is closed.
+        It logs the disconnection details and attempts to restart the user stream.
+
+        Parameters:
+            status_code: HTTP status code for the disconnection
+            msg: Disconnection message
+        """
         self.gateway.write_log(f"Trade Websocket API is disconnected, code: {status_code}, msg: {msg}")
         self.gateway.rest_api.start_user_stream()
 
     def on_error(self, e: Exception) -> None:
         """
         Callback when exception raised.
+
+        This function is called when an exception occurs in the websocket connection.
+        It logs the exception details for troubleshooting.
+
+        Parameters:
+            e: The exception that was raised
         """
         self.gateway.write_log(f"Trade Websocket API exception: {e}")
 
 
 class MdApi(WebsocketClient):
-    """The data websocket API of BinanceLinearGateway"""
+    """
+    The market data websocket API of BinanceLinearGateway.
+
+    This class handles market data from Binance through websocket connection.
+    It processes real-time updates for:
+    - Tickers (24hr statistics)
+    - Order book depth (10 levels)
+    - Klines (candlestick data) if enabled
+    """
 
     def __init__(self, gateway: BinanceLinearGateway) -> None:
         """
-        The init method of the api.
+        The init method of the API.
 
-        gateway: the parent gateway object for pushing callback data.
+        This method initializes the websocket client with a reference to the parent gateway.
+
+        Parameters:
+            gateway: the parent gateway object for pushing callback data
         """
         super().__init__()
 
@@ -808,7 +1141,17 @@ class MdApi(WebsocketClient):
         proxy_host: str,
         proxy_port: int,
     ) -> None:
-        """Start server connection"""
+        """
+        Start server connection.
+
+        This method establishes a websocket connection to Binance market data stream.
+
+        Parameters:
+            server: Server type ("REAL" or "TESTNET")
+            kline_stream: Whether to include kline data stream
+            proxy_host: Proxy server hostname or IP
+            proxy_port: Proxy server port
+        """
         self.kline_stream = kline_stream
 
         if server == "REAL":
@@ -819,7 +1162,13 @@ class MdApi(WebsocketClient):
         self.start()
 
     def on_connected(self) -> None:
-        """Callback when server is connected"""
+        """
+        Callback when server is connected.
+
+        This function is called when the market data websocket connection
+        is successfully established. It logs the connection status and
+        resubscribes to previously subscribed market data channels.
+        """
         self.gateway.write_log("Data Websocket API is connected")
 
         # Resubscribe market data
@@ -840,7 +1189,16 @@ class MdApi(WebsocketClient):
             self.send_packet(packet)
 
     def subscribe(self, req: SubscribeRequest) -> None:
-        """Subscribe market data"""
+        """
+        Subscribe to market data.
+
+        This function sends subscription requests for ticker and depth data
+        for the specified trading instrument. If kline_stream is enabled,
+        it will also subscribe to 1-minute kline data.
+
+        Parameters:
+            req: Subscription request object containing symbol information
+        """
         if req.symbol in self.ticks:
             return
 
@@ -878,7 +1236,16 @@ class MdApi(WebsocketClient):
         self.send_packet(packet)
 
     def on_packet(self, packet: dict) -> None:
-        """Callback of data update"""
+        """
+        Callback of market data update.
+
+        This function processes different types of market data updates,
+        including ticker, depth, and kline data. It updates the corresponding
+        TickData object and pushes updates to the gateway.
+
+        Parameters:
+            packet: JSON data received from websocket
+        """
         stream: str = packet.get("stream", None)
         if not stream:
             return
@@ -938,24 +1305,50 @@ class MdApi(WebsocketClient):
             self.gateway.on_tick(copy(tick))
 
     def on_disconnected(self, status_code: int, msg: str) -> None:
-        """Callback when server is disconnected"""
+        """
+        Callback when server is disconnected.
+
+        This function is called when the market data websocket connection
+        is closed. It logs the disconnection details.
+
+        Parameters:
+            status_code: HTTP status code for the disconnection
+            msg: Disconnection message
+        """
         self.gateway.write_log(f"Data Websocket API is disconnected, code: {status_code}, msg: {msg}")
 
     def on_error(self, e: Exception) -> None:
         """
         Callback when exception raised.
+
+        This function is called when an exception occurs in the market data
+        websocket connection. It logs the exception details for troubleshooting.
+
+        Parameters:
+            e: The exception that was raised
         """
         self.gateway.write_log(f"Data Websocket API exception: {e}")
 
 
 class TradeApi(WebsocketClient):
-    """The trade websocket API of BinanceLinearGateway"""
+    """
+    The trading websocket API of BinanceLinearGateway.
+
+    This class handles trading operations with Binance through websocket connection.
+    It provides functionality for:
+    - Order placement
+    - Order cancellation
+    - Request authentication and signature generation
+    """
 
     def __init__(self, gateway: BinanceLinearGateway) -> None:
         """
-        The init method of the api.
+        The init method of the API.
 
-        gateway: the parent gateway object for pushing callback data.
+        This method initializes the websocket client with a reference to the parent gateway.
+
+        Parameters:
+            gateway: the parent gateway object for pushing callback data
         """
         super().__init__()
 
@@ -983,7 +1376,19 @@ class TradeApi(WebsocketClient):
         proxy_host: str,
         proxy_port: int
     ) -> None:
-        """Start server connection"""
+        """
+        Start server connection.
+
+        This method initializes the API credentials and establishes
+        a websocket connection to Binance trading API.
+
+        Parameters:
+            key: API Key for authentication
+            secret: API Secret for request signing
+            server: Server type ("REAL" or "TESTNET")
+            proxy_host: Proxy server hostname or IP
+            proxy_port: Proxy server port
+        """
         self.key = key
         self.secret = secret.encode()
         self.proxy_port = proxy_port
@@ -1000,7 +1405,15 @@ class TradeApi(WebsocketClient):
         self.start()
 
     def sign(self, params: dict) -> None:
-        """Generate the signature for the request"""
+        """
+        Generate the signature for the request.
+
+        This function creates an HMAC-SHA256 signature required for
+        authenticated API requests to Binance.
+
+        Parameters:
+            params: Dictionary containing the parameters to be signed
+        """
         timestamp: int = int(time.time() * 1000)
         params["timestamp"] = timestamp
 
@@ -1013,7 +1426,19 @@ class TradeApi(WebsocketClient):
         params["signature"] = signature
 
     def send_order(self, req: OrderRequest) -> str:
-        """Send new order"""
+        """
+        Send new order to Binance.
+
+        This function creates and sends a new order request to the exchange.
+        It handles different order types including market, limit, and stop orders.
+
+        Parameters:
+            req: Order request object containing order details
+
+        Returns:
+            vt_orderid: The VeighNa order ID (gateway_name.orderid) if successful,
+                       empty string otherwise
+        """
         # Get contract
         contract: ContractData | None = self.gateway.get_contract_by_symbol(req.symbol)
         if not contract:
@@ -1066,7 +1491,14 @@ class TradeApi(WebsocketClient):
         return cast(str, order.vt_orderid)
 
     def cancel_order(self, req: CancelRequest) -> None:
-        """Cancel existing order"""
+        """
+        Cancel existing order on Binance.
+
+        This function sends a request to cancel an existing order on the exchange.
+
+        Parameters:
+            req: Cancel request object containing order details
+        """
         contract: ContractData | None = self.gateway.get_contract_by_symbol(req.symbol)
         if not contract:
             self.gateway.write_log(f"Failed to cancel order, symbol not found: {req.symbol}")
@@ -1090,18 +1522,40 @@ class TradeApi(WebsocketClient):
         self.send_packet(packet)
 
     def on_connected(self) -> None:
-        """Callback when server is connected"""
+        """
+        Callback when server is connected.
+
+        This function is called when the trading websocket connection
+        is successfully established. It logs the connection status.
+        """
         self.gateway.write_log("Trade Websocket API is connected")
 
     def on_packet(self, packet: dict) -> None:
-        """Callback of data update"""
+        """
+        Callback of data update.
+
+        This function processes responses from the trading websocket API.
+        It routes the response to the appropriate callback function based
+        on the request ID.
+
+        Parameters:
+            packet: JSON data received from websocket
+        """
         reqid: int = packet.get("id", 0)
         callback: Callable | None = self.reqid_callback_map.get(reqid, None)
         if callback:
             callback(packet)
 
     def on_send_order(self, packet: dict) -> None:
-        """Callback of send order"""
+        """
+        Callback of send order.
+
+        This function processes the response to an order placement request.
+        It handles errors by logging the details and updating the order status.
+
+        Parameters:
+            packet: JSON data received from websocket
+        """
         error: dict = packet.get("error", None)
         if not error:
             return
@@ -1118,7 +1572,15 @@ class TradeApi(WebsocketClient):
             self.gateway.on_order(order)
 
     def on_cancel_order(self, packet: dict) -> None:
-        """Callback of cancel order"""
+        """
+        Callback of cancel order.
+
+        This function processes the response to an order cancellation request.
+        It handles errors by logging the details.
+
+        Parameters:
+            packet: JSON data received from websocket
+        """
         error: dict = packet.get("error", None)
         if not error:
             return
@@ -1130,7 +1592,18 @@ class TradeApi(WebsocketClient):
 
 
 def generate_datetime(timestamp: float) -> datetime:
-    """Generate datetime object from Binance timestamp"""
+    """
+    Generate datetime object from Binance timestamp.
+
+    This function converts a Binance millisecond timestamp to a datetime object
+    with UTC timezone.
+
+    Parameters:
+        timestamp: Binance timestamp in milliseconds
+
+    Returns:
+        Datetime object with UTC timezone
+    """
     dt: datetime = datetime.fromtimestamp(timestamp / 1000, tz=UTC_TZ)
     return dt
 
@@ -1139,6 +1612,16 @@ def format_float(f: float) -> str:
     """
     Convert float number to string with correct precision.
 
-    Fix potential error -1111: Parameter "quantity" has too much precision
+    This function formats floating point numbers to avoid precision errors
+    when sending requests to Binance.
+
+    Parameters:
+        f: The floating point number to format
+
+    Returns:
+        Formatted string representation of the number
+
+    Note:
+        Fixes potential error -1111: Parameter "quantity" has too much precision
     """
     return format_float_positional(f, trim="-")
