@@ -44,7 +44,7 @@ from vnpy_websocket import WebsocketClient
 UTC_TZ = ZoneInfo("UTC")
 
 # Real server hosts
-REAL_REST_HOSTT: str = "https://fapi.binance.com"
+REAL_REST_HOST: str = "https://fapi.binance.com"
 REAL_TRADE_HOST: str = "wss://ws-fapi.binance.com/ws-fapi/v1"
 REAL_USER_HOST: str = "wss://fstream.binance.com/ws/"
 REAL_DATA_HOST: str = "wss://fstream.binance.com/stream"
@@ -108,10 +108,6 @@ TIMEDELTA_MAP: dict[Interval, timedelta] = {
 # Set weboscket timeout to 24 hour
 WEBSOCKET_TIMEOUT = 24 * 60 * 60
 
-# Global dict for contract data
-symbol_contract_map: dict[str, ContractData] = {}
-name_contract_map: dict[str, ContractData] = {}
-
 
 # Authentication level
 class Security(Enum):
@@ -156,6 +152,8 @@ class BinanceLinearGateway(BaseGateway):
         self.md_api: MdApi = MdApi(self)
 
         self.orders: dict[str, OrderData] = {}
+        self.symbol_contract_map: dict[str, ContractData] = {}
+        self.name_contract_map: dict[str, ContractData] = {}
 
     def connect(self, setting: dict) -> None:
         """Start server connections"""
@@ -168,13 +166,13 @@ class BinanceLinearGateway(BaseGateway):
 
         self.rest_api.connect(key, secret, server, proxy_host, proxy_port)
         self.trade_api.connect(key, secret, server, proxy_host, proxy_port)
-        self.data_api.connect(server, kline_stream, proxy_host, proxy_port)
+        self.md_api.connect(server, kline_stream, proxy_host, proxy_port)
 
         self.event_engine.register(EVENT_TIMER, self.process_timer_event)
 
     def subscribe(self, req: SubscribeRequest) -> None:
         """Subscribe market data"""
-        self.data_api.subscribe(req)
+        self.md_api.subscribe(req)
 
     def send_order(self, req: OrderRequest) -> str:
         """Send new order"""
@@ -200,7 +198,7 @@ class BinanceLinearGateway(BaseGateway):
         """Close server connections"""
         self.rest_api.stop()
         self.user_api.stop()
-        self.data_api.stop()
+        self.md_api.stop()
         self.trade_api.stop()
 
     def process_timer_event(self, event: Event) -> None:
@@ -215,6 +213,20 @@ class BinanceLinearGateway(BaseGateway):
     def get_order(self, orderid: str) -> OrderData:
         """Get previously saved order"""
         return self.orders.get(orderid, None)
+
+    def on_contract(self, contract: ContractData) -> None:
+        """Save contract data"""
+        self.symbol_contract_map[contract.symbol] = contract
+        self.name_contract_map[contract.name] = contract
+        super().on_contract(contract)
+
+    def get_contract_by_symbol(self, symbol: str) -> ContractData | None:
+        """Get contract data by symbol"""
+        return self.symbol_contract_map.get(symbol, None)
+
+    def get_contract_by_name(self, name: str) -> ContractData | None:
+        """Get contract data by name"""
+        return self.name_contract_map.get(name, None)
 
 
 class RestApi(RestClient):
@@ -311,7 +323,7 @@ class RestApi(RestClient):
         self.order_prefix = datetime.now().strftime("%y%m%d%H%M%S")
 
         if self.server == "REAL":
-            self.init(REAL_REST_HOSTT, proxy_host, proxy_port)
+            self.init(REAL_REST_HOST, proxy_host, proxy_port)
         else:
             self.init(TESTNET_REST_HOST, proxy_host, proxy_port)
 
@@ -452,7 +464,7 @@ class RestApi(RestClient):
         """Callback of holding positions query"""
         for d in data:
             name: str = d["symbol"]
-            contract: ContractData | None = name_contract_map.get(name, None)
+            contract: ContractData | None = self.gateway.get_contract_by_name(name)
             if not contract:
                 continue
 
@@ -478,7 +490,7 @@ class RestApi(RestClient):
             if not order_type:
                 continue
 
-            contract: ContractData | None = name_contract_map.get(d["symbol"], None)
+            contract: ContractData | None = self.gateway.get_contract_by_symbol(d["symbol"])
             if not contract:
                 continue
 
@@ -534,9 +546,6 @@ class RestApi(RestClient):
                 stop_supported=True
             )
             self.gateway.on_contract(contract)
-
-            symbol_contract_map[contract.symbol] = contract
-            name_contract_map[contract.name] = contract
 
         self.gateway.write_log("Available contracts data is received")
 
@@ -719,7 +728,7 @@ class UserApi(WebsocketClient):
                     volume = int(volume)
 
                 name: str = pos_data["s"]
-                contract: ContractData | None = name_contract_map.get(name, None)
+                contract: ContractData | None = self.gateway.get_contract_by_name(name)
                 if not contract:
                     continue
 
@@ -746,7 +755,7 @@ class UserApi(WebsocketClient):
 
         # Filter unsupported symbol
         name: str = ord_data["s"]
-        contract: ContractData | None = name_contract_map.get(name, None)
+        contract: ContractData | None = self.gateway.get_contract_by_name(name)
         if not contract:
             return
 
@@ -860,7 +869,7 @@ class MdApi(WebsocketClient):
         if req.symbol in self.ticks:
             return
 
-        contract: ContractData | None = symbol_contract_map.get(req.symbol, None)
+        contract: ContractData | None = self.gateway.get_contract_by_symbol(req.symbol)
         if not contract:
             self.gateway.write_log(f"Failed to subscribe market data, symbol not found: {req.symbol}")
             return
@@ -902,7 +911,7 @@ class MdApi(WebsocketClient):
         data: dict = packet["data"]
 
         name, channel = stream.split("@")
-        contract: ContractData = name_contract_map[name.upper()]
+        contract: ContractData = self.gateway.get_contract_by_name(name.upper())
         tick: TickData = self.ticks[contract.symbol]
 
         if channel == "ticker":
@@ -1031,7 +1040,7 @@ class TradeApi(WebsocketClient):
     def send_order(self, req: OrderRequest) -> str:
         """Send new order"""
         # Get contract
-        contract: ContractData | None = symbol_contract_map.get(req.symbol, None)
+        contract: ContractData | None = self.gateway.get_contract_by_symbol(req.symbol)
         if not contract:
             self.gateway.write_log(f"Failed to send order, symbol not found: {req.symbol}")
             return ""
@@ -1083,7 +1092,7 @@ class TradeApi(WebsocketClient):
 
     def cancel_order(self, req: CancelRequest) -> None:
         """Cancel existing order"""
-        contract: ContractData | None = symbol_contract_map.get(req.symbol, None)
+        contract: ContractData | None = self.gateway.get_contract_by_symbol(req.symbol)
         if not contract:
             self.gateway.write_log(f"Failed to cancel order, symbol not found: {req.symbol}")
             return
