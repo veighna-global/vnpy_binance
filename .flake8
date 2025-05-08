@@ -1,5 +1,0 @@
-[flake8]
-exclude = venv,build,__pycache__,__init__.py,ib,talib,uic
-ignore =
-    E501
-    W503
