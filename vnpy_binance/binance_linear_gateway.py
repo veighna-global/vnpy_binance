@@ -5,7 +5,6 @@ import urllib.parse
 from copy import copy
 from typing import cast, Any
 from collections.abc import Callable
-from enum import Enum
 from time import sleep
 from datetime import datetime, timedelta
 
@@ -107,13 +106,6 @@ TIMEDELTA_MAP: dict[Interval, timedelta] = {
 
 # Set weboscket timeout to 24 hour
 WEBSOCKET_TIMEOUT = 24 * 60 * 60
-
-
-# Authentication level
-class Security(Enum):
-    NONE = 0
-    SIGNED = 1
-    API_KEY = 2
 
 
 class BinanceLinearGateway(BaseGateway):
@@ -257,51 +249,49 @@ class RestApi(RestClient):
 
     def sign(self, request: Request) -> Request:
         """Standard callback for signing a request"""
-        security: Security = request.data["security"]
-        if security == Security.NONE:
-            request.data = None
-            return request
-
+        # Construct path with query parameters if they exist
         if request.params:
             path: str = request.path + "?" + urllib.parse.urlencode(request.params)
         else:
-            request.params = dict()
+            request.params = {}
             path = request.path
 
-        if security == Security.SIGNED:
-            timestamp: int = int(time.time() * 1000)
+        # Get current timestamp in milliseconds
+        timestamp: int = int(time.time() * 1000)
 
-            if self.time_offset > 0:
-                timestamp -= abs(self.time_offset)
-            elif self.time_offset < 0:
-                timestamp += abs(self.time_offset)
+        # Adjust timestamp based on time offset with server
+        if self.time_offset > 0:
+            timestamp -= abs(self.time_offset)
+        elif self.time_offset < 0:
+            timestamp += abs(self.time_offset)
 
-            request.params["timestamp"] = timestamp
+        # Add timestamp to request parameters
+        request.params["timestamp"] = timestamp
 
-            query: str = urllib.parse.urlencode(sorted(request.params.items()))
-            signature: str = hmac.new(
-                self.secret,
-                query.encode("utf-8"),
-                hashlib.sha256
-            ).hexdigest()
+        # Generate signature using HMAC SHA256
+        query: str = urllib.parse.urlencode(sorted(request.params.items()))
+        signature: str = hmac.new(
+            self.secret,
+            query.encode("utf-8"),
+            hashlib.sha256
+        ).hexdigest()
 
-            query += f"&signature={signature}"
-            path = request.path + "?" + query
+        # Append signature to query string
+        query += f"&signature={signature}"
+        path = request.path + "?" + query
 
+        # Update request with signed path and clear params/data
         request.path = path
         request.params = {}
         request.data = {}
 
-        # Add header to the request
-        headers = {
+        # Add required headers for API authentication
+        request.headers = {
             "Content-Type": "application/x-www-form-urlencoded",
-            "Accept": "application/json",
+            "Accept": "application/json", 
             "X-MBX-APIKEY": self.key,
             "Connection": "close"
         }
-
-        if security in [Security.SIGNED, Security.API_KEY]:
-            request.headers = headers
 
         return request
 
@@ -335,80 +325,62 @@ class RestApi(RestClient):
 
     def query_time(self) -> None:
         """Query server time"""
-        data: dict = {"security": Security.NONE}
-
         path: str = "/fapi/v1/time"
 
         self.add_request(
             "GET",
             path,
-            callback=self.on_query_time,
-            data=data
+            callback=self.on_query_time
         )
 
     def query_account(self) -> None:
         """Query account balance"""
-        data: dict = {"security": Security.SIGNED}
-
         path: str = "/fapi/v3/account"
 
         self.add_request(
             method="GET",
             path=path,
             callback=self.on_query_account,
-            data=data
         )
 
     def query_position(self) -> None:
         """Query holding positions"""
-        data: dict = {"security": Security.SIGNED}
-
         path: str = "/fapi/v3/positionRisk"
 
         self.add_request(
             method="GET",
             path=path,
             callback=self.on_query_position,
-            data=data
         )
 
     def query_order(self) -> None:
         """Query open orders"""
-        data: dict = {"security": Security.SIGNED}
-
         path: str = "/fapi/v1/openOrders"
 
         self.add_request(
             method="GET",
             path=path,
             callback=self.on_query_order,
-            data=data
         )
 
     def query_contract(self) -> None:
         """Query available contracts"""
-        data: dict = {"security": Security.NONE}
-
         path: str = "/fapi/v1/exchangeInfo"
 
         self.add_request(
             method="GET",
             path=path,
             callback=self.on_query_contract,
-            data=data
         )
 
     def start_user_stream(self) -> None:
         """Create listen key for user stream"""
-        data: dict = {"security": Security.API_KEY}
-
         path: str = "/fapi/v1/listenKey"
 
         self.add_request(
             method="POST",
             path=path,
             callback=self.on_start_user_stream,
-            data=data
         )
 
     def keep_user_stream(self) -> None:
@@ -421,8 +393,6 @@ class RestApi(RestClient):
             return
         self.keep_alive_count = 0
 
-        data: dict = {"security": Security.API_KEY}
-
         params: dict = {"listenKey": self.user_stream_key}
 
         path: str = "/fapi/v1/listenKey"
@@ -432,7 +402,6 @@ class RestApi(RestClient):
             path=path,
             callback=self.on_keep_user_stream,
             params=params,
-            data=data,
             on_error=self.on_keep_user_stream_error
         )
 
@@ -608,7 +577,6 @@ class RestApi(RestClient):
             resp: Response = self.request(
                 "GET",
                 path=path,
-                data={"security": Security.NONE},
                 params=params
             )
 
