@@ -91,7 +91,6 @@ PRODUCT_BINANCE2VT: dict[str, Product] = {
     "NEXT_QUARTER": Product.FUTURES,
 }
 
-
 # Kline interval map
 INTERVAL_VT2BINANCES: dict[Interval, str] = {
     Interval.MINUTE: "1m",
@@ -452,8 +451,13 @@ class RestApi(RestClient):
     def on_query_position(self, data: list, request: Request) -> None:
         """Callback of holding positions query"""
         for d in data:
+            name: str = d["symbol"]
+            contract: ContractData | None = name_contract_map.get(name, None)
+            if not contract:
+                continue
+
             position: PositionData = PositionData(
-                symbol=d["symbol"],
+                symbol=contract.symbol,
                 exchange=Exchange.GLOBAL,
                 direction=Direction.NET,
                 volume=float(d["positionAmt"]),
@@ -714,8 +718,13 @@ class UserApi(WebsocketClient):
                 else:
                     volume = int(volume)
 
+                name: str = pos_data["s"]
+                contract: ContractData | None = name_contract_map.get(name, None)
+                if not contract:
+                    continue
+
                 position: PositionData = PositionData(
-                    symbol=pos_data["s"],
+                    symbol=contract.symbol,
                     exchange=Exchange.GLOBAL,
                     direction=Direction.NET,
                     volume=volume,
