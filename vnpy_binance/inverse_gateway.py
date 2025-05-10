@@ -618,7 +618,8 @@ class RestApi(RestClient):
                 gateway_name=self.gateway_name
             )
 
-            self.gateway.on_account(account)
+            if account.balance:
+                self.gateway.on_account(account)
 
         self.gateway.write_log("Account data received")
 
@@ -649,7 +650,8 @@ class RestApi(RestClient):
                 gateway_name=self.gateway_name,
             )
 
-            self.gateway.on_position(position)
+            if position.volume:
+                self.gateway.on_position(position)
 
         self.gateway.write_log("Position data received")
 
