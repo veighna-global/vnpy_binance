@@ -787,7 +787,7 @@ class MdApi(WebsocketClient):
             channels = []
             for symbol in self.ticks.keys():
                 channels.append(f"{symbol}@ticker")
-                channels.append(f"{symbol}@depth10")
+                channels.append(f"{symbol}@bookTicker")
 
                 if self.kline_stream:
                     channels.append(f"{symbol}@kline_1m")
@@ -833,7 +833,7 @@ class MdApi(WebsocketClient):
 
         channels: list[str] = [
             f"{contract.name.lower()}@ticker",
-            f"{contract.name.lower()}@depth10"
+            f"{contract.name.lower()}@bookTicker"
         ]
 
         if self.kline_stream:
@@ -857,38 +857,30 @@ class MdApi(WebsocketClient):
         Parameters:
             packet: JSON data received from websocket
         """
-        stream: str = packet.get("stream", None)
-        if not stream:
+        name: str = packet.get("s", "")
+        if not name:
             return
 
-        data: dict = packet["data"]
-
-        name, channel = stream.split("@")
         contract: ContractData = self.gateway.get_contract_by_name(name.upper())
         tick: TickData = self.ticks[contract.symbol]
 
-        if channel == "ticker":
-            tick.volume = float(data["v"])
-            tick.turnover = float(data["q"])
-            tick.open_price = float(data["o"])
-            tick.high_price = float(data["h"])
-            tick.low_price = float(data["l"])
-            tick.last_price = float(data["c"])
-            tick.datetime = generate_datetime(float(data["E"]))
-        elif channel == "depth10":
-            bids: list = data["b"]
-            for n in range(min(10, len(bids))):
-                price, volume = bids[n]
-                tick.__setattr__("bid_price_" + str(n + 1), float(price))
-                tick.__setattr__("bid_volume_" + str(n + 1), float(volume))
+        channel: str = packet.get("e", "bookTicker")
 
-            asks: list = data["a"]
-            for n in range(min(10, len(asks))):
-                price, volume = asks[n]
-                tick.__setattr__("ask_price_" + str(n + 1), float(price))
-                tick.__setattr__("ask_volume_" + str(n + 1), float(volume))
+        if channel == "24hrTicker":
+            tick.volume = float(packet["v"])
+            tick.turnover = float(packet["q"])
+            tick.open_price = float(packet["o"])
+            tick.high_price = float(packet["h"])
+            tick.low_price = float(packet["l"])
+            tick.last_price = float(packet["c"])
+            tick.datetime = generate_datetime(float(packet["E"]))
+        elif channel == "bookTicker":
+            tick.bid_price_1 = float(packet["b"])
+            tick.bid_volume_1 = float(packet["B"])
+            tick.ask_price_1 = float(packet["a"])
+            tick.ask_volume_1 = float(packet["A"])
         else:
-            kline_data: dict = data["k"]
+            kline_data: dict = packet["k"]
 
             # Check if bar is closed
             bar_ready: bool = kline_data.get("x", False)
