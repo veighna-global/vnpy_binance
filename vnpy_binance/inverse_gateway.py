@@ -44,15 +44,15 @@ UTC_TZ = ZoneInfo("UTC")
 
 # Real server hosts
 REAL_REST_HOST: str = "https://dapi.binance.com"
-REAL_TRADE_HOST: str = "wss://dstream.binancefuture.com/ws"
-REAL_USER_HOST: str = "wss://dstream.binancefuture.com/ws/"
-REAL_DATA_HOST: str = "wss://dstream.binancefuture.com/stream"
+REAL_TRADE_HOST: str = "wss://ws-dapi.binance.com/ws-dapi/v1"
+REAL_USER_HOST: str = "wss://dstream.binance.com/ws/"
+REAL_DATA_HOST: str = "wss://dstream.binance.com/stream"
 
 # Testnet server hosts
 TESTNET_REST_HOST: str = "https://testnet.binancefuture.com"
-TESTNET_TRADE_HOST: str = "wss://testnet.binancefuture.com/ws"
-TESTNET_USER_HOST: str = "wss://testnet.binancefuture.com/ws/"
-TESTNET_DATA_HOST: str = "wss://testnet.binancefuture.com/stream"
+TESTNET_TRADE_HOST: str = "wss://testnet.binancefuture.com/ws-dapi/v1"
+TESTNET_USER_HOST: str = "wss://dstream.binancefuture.com/ws/"
+TESTNET_DATA_HOST: str = "wss://dstream.binancefuture.com/stream"
 
 # Order status map
 STATUS_BINANCE2VT: dict[str, Status] = {
