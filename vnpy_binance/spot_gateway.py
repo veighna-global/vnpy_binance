@@ -353,41 +353,42 @@ class RestApi(RestClient):
         Returns:
             Request: Modified request with authentication parameters
         """
-        # # Construct path with query parameters if they exist
-        # if request.params:
-        #     path: str = request.path + "?" + urllib.parse.urlencode(request.params)
-        # else:
-        #     request.params = {}
-        #     path = request.path
+        if request.data and request.data.get("signed", False):
+            # Construct path with query parameters if they exist
+            if request.params:
+                path: str = request.path + "?" + urllib.parse.urlencode(request.params)
+            else:
+                request.params = {}
+                path = request.path
 
-        # # Get current timestamp in milliseconds
-        # timestamp: int = int(time.time() * 1000)
+            # Get current timestamp in milliseconds
+            timestamp: int = int(time.time() * 1000)
 
-        # # Adjust timestamp based on time offset with server
-        # if self.time_offset > 0:
-        #     timestamp -= abs(self.time_offset)
-        # elif self.time_offset < 0:
-        #     timestamp += abs(self.time_offset)
+            # Adjust timestamp based on time offset with server
+            if self.time_offset > 0:
+                timestamp -= abs(self.time_offset)
+            elif self.time_offset < 0:
+                timestamp += abs(self.time_offset)
 
-        # # Add timestamp to request parameters
-        # request.params["timestamp"] = timestamp
+            # Add timestamp to request parameters
+            request.params["timestamp"] = timestamp
 
-        # # Generate signature using HMAC SHA256
-        # query: str = urllib.parse.urlencode(sorted(request.params.items()))
-        # signature: str = hmac.new(
-        #     self.secret,
-        #     query.encode("utf-8"),
-        #     hashlib.sha256
-        # ).hexdigest()
+            # Generate signature using HMAC SHA256
+            query: str = urllib.parse.urlencode(sorted(request.params.items()))
+            signature: str = hmac.new(
+                self.secret,
+                query.encode("utf-8"),
+                hashlib.sha256
+            ).hexdigest()
 
-        # # Append signature to query string
-        # query += f"&signature={signature}"
-        # path = request.path + "?" + query
+            # Append signature to query string
+            query += f"&signature={signature}"
+            path = request.path + "?" + query
 
-        # # Update request with signed path and clear params/data
-        # request.path = path
-        # request.params = {}
-        # request.data = {}
+            # Update request with signed path and clear params/data
+            request.path = path
+            request.params = {}
+            request.data = {}
 
         # Add required headers for API authentication
         request.headers = {
@@ -454,6 +455,7 @@ class RestApi(RestClient):
             method="GET",
             path=path,
             callback=self.on_query_account,
+            data={"signed": True}
         )
 
     def query_order(self) -> None:
@@ -469,6 +471,7 @@ class RestApi(RestClient):
             method="GET",
             path=path,
             callback=self.on_query_order,
+            data={"signed": True}
         )
 
     def query_contract(self) -> None:
@@ -585,14 +588,6 @@ class RestApi(RestClient):
             request: Original request object
         """
         for d in data["symbols"]:
-            # Skip symbols that are not trading
-            if d["status"] != "TRADING":
-                continue
-
-            # Skip symbols that are not spot trading
-            if "SPOT" not in d["permissions"]:
-                continue
-
             pricetick: float = 1
             min_volume: float = 1
             max_volume: float = 1
@@ -604,7 +599,7 @@ class RestApi(RestClient):
                     min_volume = float(f["minQty"])
                     max_volume = float(f["maxQty"])
 
-            symbol: str = d["symbol"] + "_BINANCE"
+            symbol: str = d["symbol"] + "_SPOT_BINANCE"
 
             contract: ContractData = ContractData(
                 symbol=symbol,
