@@ -4,6 +4,7 @@ from vnpy.trader.ui import MainWindow, create_qapp
 
 from vnpy_binance import (
     BinanceLinearGateway,
+    BinanceInverseGateway
 )
 from vnpy_datamanager import DataManagerApp
 
@@ -15,6 +16,7 @@ def main() -> None:
     event_engine = EventEngine()
     main_engine = MainEngine(event_engine)
     main_engine.add_gateway(BinanceLinearGateway)
+    main_engine.add_gateway(BinanceInverseGateway)
 
     main_engine.add_app(DataManagerApp)
 

@@ -21,6 +21,7 @@
 # SOFTWARE.
 
 from .linear_gateway import BinanceLinearGateway
+from .inverse_gateway import BinanceInverseGateway
 
 
 __version__ = "2025.05.08"
@@ -28,4 +29,5 @@ __version__ = "2025.05.08"
 
 __all__ = [
     "BinanceLinearGateway",
+    "BinanceInverseGateway"
 ]
