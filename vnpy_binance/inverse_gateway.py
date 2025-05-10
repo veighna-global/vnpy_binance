@@ -716,11 +716,13 @@ class RestApi(RestClient):
                     min_volume = float(f["minQty"])
                     max_volume = float(f["maxQty"])
 
-            product: Product = PRODUCT_BINANCE2VT.get(d["contractType"], Product.SWAP)
+            product: Product = PRODUCT_BINANCE2VT.get(d["contractType"], None)
             if product == Product.SWAP:
-                symbol: str = d["symbol"] + "_SWAP_BINANCE"
-            else:
+                symbol: str = d["symbol"].replace("_PERP", "") + "_SWAP_BINANCE"
+            elif product == Product.FUTURES:
                 symbol = d["symbol"] + "_BINANCE"
+            else:
+                continue
 
             contract: ContractData = ContractData(
                 symbol=symbol,
