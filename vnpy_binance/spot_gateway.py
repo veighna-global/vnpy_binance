@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 from numpy import format_float_positional
 
-from vnpy.event import Event, EventEngine
+from vnpy.event import EventEngine
 from vnpy.trader.constant import (
     Direction,
     Exchange,
@@ -32,7 +32,6 @@ from vnpy.trader.object import (
     SubscribeRequest,
     HistoryRequest
 )
-from vnpy.trader.event import EVENT_TIMER
 from vnpy.trader.utility import ZoneInfo
 from vnpy_rest import Request, RestClient, Response
 from vnpy_websocket import WebsocketClient

@@ -1,8 +1,8 @@
-# 2025.5.8
+# 2025.05.08
 
 1. remove dependency on vnpy_evo
 2. change to use GLOBAL exchange
-3. refactor BinanceLinearGateway
+3. refactor BinanceLinearGateway 
 
 # 2025.1.25
 
