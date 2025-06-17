@@ -972,7 +972,6 @@ class UserApi(WebsocketClient):
         has expired. It will log a message and disconnect the websocket connection.
         """
         self.gateway.write_log("Listen key expired")
-        self.disconnect()
 
     def on_account(self, packet: dict) -> None:
         """

@@ -11,7 +11,8 @@ from types import TracebackType
 
 from numpy import format_float_positional
 
-from vnpy.event import EventEngine
+from vnpy.event import EventEngine, Event
+from vnpy.trader.event import EVENT_TIMER
 from vnpy.trader.constant import (
     Direction,
     Exchange,
@@ -1128,7 +1129,6 @@ class UserApi(WebsocketClient):
         has expired. It will log a message and disconnect the websocket connection.
         """
         self.gateway.write_log("Listen key expired")
-        self.disconnect()
 
     def on_account(self, packet: dict) -> None:
         """
