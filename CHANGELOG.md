@@ -1,3 +1,8 @@
+# 2025.06.17
+
+1. refactor BinanceSpotGateway and BinanceInverseGateway
+2. remove unused disconnect function
+
 # 2025.05.08
 
 1. remove dependency on vnpy_evo

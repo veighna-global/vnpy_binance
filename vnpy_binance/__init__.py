@@ -25,7 +25,7 @@ from .inverse_gateway import BinanceInverseGateway
 from .spot_gateway import BinanceSpotGateway
 
 
-__version__ = "2025.05.08"
+__version__ = "2025.06.17"
 
 
 __all__ = [
