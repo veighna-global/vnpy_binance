@@ -45,8 +45,8 @@ UTC_TZ = ZoneInfo("UTC")
 # Real server hosts
 REAL_REST_HOST: str = "https://api.binance.com"
 REAL_TRADE_HOST: str = "wss://ws-api.binance.com/ws-api/v3"
-REAL_USER_HOST: str = "wss://stream.binance.com/ws/"
-REAL_DATA_HOST: str = "wss://stream.binance.com:443"
+REAL_USER_HOST: str = "wss://fstream.binance.com/ws/"
+REAL_DATA_HOST: str = "wss://fstream.binance.com/stream"
 
 # Testnet server hosts
 TESTNET_REST_HOST: str = "https://testnet.binance.vision"
@@ -974,30 +974,34 @@ class MdApi(WebsocketClient):
         Parameters:
             packet: JSON data received from websocket
         """
-        name: str = packet.get("s", "")
+        stream: str = packet.get("stream", None)
+        if not stream:
+            return
+        data: dict = packet["data"]
+        name: str = data.get("s", "")
         if not name:
             return
 
         contract: ContractData = self.gateway.get_contract_by_name(name.upper())
         tick: TickData = self.ticks[contract.symbol]
 
-        channel: str = packet.get("e", "bookTicker")
+        channel: str = data.get("e", "bookTicker")
 
         if channel == "24hrTicker":
-            tick.volume = float(packet["v"])
-            tick.turnover = float(packet["q"])
-            tick.open_price = float(packet["o"])
-            tick.high_price = float(packet["h"])
-            tick.low_price = float(packet["l"])
-            tick.last_price = float(packet["c"])
-            tick.datetime = generate_datetime(float(packet["E"]))
+            tick.volume = float(data["v"])
+            tick.turnover = float(data["q"])
+            tick.open_price = float(data["o"])
+            tick.high_price = float(data["h"])
+            tick.low_price = float(data["l"])
+            tick.last_price = float(data["c"])
+            tick.datetime = generate_datetime(float(data["E"]))
         elif channel == "bookTicker":
-            tick.bid_price_1 = float(packet["b"])
-            tick.bid_volume_1 = float(packet["B"])
-            tick.ask_price_1 = float(packet["a"])
-            tick.ask_volume_1 = float(packet["A"])
+            tick.bid_price_1 = float(data["b"])
+            tick.bid_volume_1 = float(data["B"])
+            tick.ask_price_1 = float(data["a"])
+            tick.ask_volume_1 = float(data["A"])
         elif channel == "kline":  # Handle kline data
-            kline_data: dict = packet["k"]
+            kline_data: dict = data["k"]
 
             # Check if bar is closed
             bar_ready: bool = kline_data.get("x", False)
