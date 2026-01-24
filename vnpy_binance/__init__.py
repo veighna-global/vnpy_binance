@@ -23,6 +23,7 @@
 from .linear_gateway import BinanceLinearGateway
 from .inverse_gateway import BinanceInverseGateway
 from .spot_gateway import BinanceSpotGateway
+from .portfolio_gateway import BinancePortfolioGateway
 
 
 __version__ = "2025.06.17"
@@ -31,5 +32,6 @@ __version__ = "2025.06.17"
 __all__ = [
     "BinanceLinearGateway",
     "BinanceInverseGateway",
-    "BinanceSpotGateway"
+    "BinanceSpotGateway",
+    "BinancePortfolioGateway"
 ]
