@@ -317,6 +317,8 @@ class BinanceSpotGateway(BaseGateway):
         """
         self.rest_api.keep_user_stream()
 
+        self.md_api.subscribe_new_channels()
+
 
 class RestApi(RestClient):
     """
@@ -862,6 +864,8 @@ class MdApi(WebsocketClient):
         self.reqid: int = 0
         self.kline_stream: bool = False
 
+        self.new_channels: list[str] = []
+
     def connect(
         self,
         server: str,
@@ -956,12 +960,26 @@ class MdApi(WebsocketClient):
         if self.kline_stream:
             channels.append(f"{contract.name.lower()}@kline_1m")
 
+        self.new_channels.extend(channels)
+
+    def subscribe_new_channels(self) -> None:
+        """
+        Update timer event.
+
+        This function sends subscription requests for new channels
+        to the market data websocket server.
+        """
+        if not self.new_channels:
+            return
+
         packet: dict = {
             "method": "SUBSCRIBE",
-            "params": channels,
+            "params": self.new_channels,
             "id": self.reqid
         }
         self.send_packet(packet)
+
+        self.new_channels = []
 
     def on_packet(self, packet: dict) -> None:
         """
