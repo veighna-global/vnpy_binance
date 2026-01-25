@@ -1,3 +1,7 @@
+# 2026.01.25
+
+1. use periodic subscription mechanism to avoid connection loss
+
 # 2025.06.17
 
 1. refactor BinanceSpotGateway and BinanceInverseGateway
