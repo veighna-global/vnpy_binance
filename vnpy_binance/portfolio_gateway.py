@@ -236,7 +236,9 @@ class BinancePortfolioGateway(BaseGateway):
 
         self.orders: dict[str, OrderData] = {}
         self.symbol_contract_map: dict[str, ContractData] = {}
-        self.name_contract_map: dict[str, ContractData] = {}
+        self.um_name_contract_map: dict[str, ContractData] = {}
+        self.cm_name_contract_map: dict[str, ContractData] = {}
+        self.margin_name_contract_map: dict[str, ContractData] = {}
 
     def connect(self, setting: dict) -> None:
         """
@@ -363,7 +365,15 @@ class BinancePortfolioGateway(BaseGateway):
             contract: Contract data object
         """
         self.symbol_contract_map[contract.symbol] = contract
-        self.name_contract_map[contract.name] = contract
+
+        market_type: MarketType = get_market_type(contract.symbol)
+        if market_type == MarketType.UM:
+            self.um_name_contract_map[contract.name] = contract
+        elif market_type == MarketType.CM:
+            self.cm_name_contract_map[contract.name] = contract
+        else:
+            self.margin_name_contract_map[contract.name] = contract
+
         super().on_contract(contract)
 
     def get_contract_by_symbol(self, symbol: str) -> ContractData | None:
@@ -378,9 +388,27 @@ class BinancePortfolioGateway(BaseGateway):
         """
         return self.symbol_contract_map.get(symbol, None)
 
-    def get_contract_by_name(self, name: str) -> ContractData | None:
+    def get_contract_by_name(self, name: str, market_type: MarketType) -> ContractData | None:
         """
-        Get contract data by exchange symbol name.
+        Get contract data by exchange symbol name and market type.
+
+        Parameters:
+            name: Exchange symbol name
+            market_type: Market type for contract lookup
+
+        Returns:
+            Contract data object if found, None otherwise
+        """
+        if market_type == MarketType.UM:
+            return self.um_name_contract_map.get(name, None)
+        elif market_type == MarketType.CM:
+            return self.cm_name_contract_map.get(name, None)
+        else:
+            return self.margin_name_contract_map.get(name, None)
+
+    def get_futures_contract_by_name(self, name: str) -> ContractData | None:
+        """
+        Get futures contract data by exchange symbol name.
 
         Parameters:
             name: Exchange symbol name
@@ -388,7 +416,10 @@ class BinancePortfolioGateway(BaseGateway):
         Returns:
             Contract data object if found, None otherwise
         """
-        return self.name_contract_map.get(name, None)
+        contract: ContractData | None = self.um_name_contract_map.get(name, None)
+        if contract:
+            return contract
+        return self.cm_name_contract_map.get(name, None)
 
 
 class RestApi(RestClient):
@@ -854,7 +885,7 @@ class RestApi(RestClient):
         """Callback of UM positions query."""
         for d in data:
             name: str = d["symbol"]
-            contract: ContractData | None = self.gateway.get_contract_by_name(name)
+            contract: ContractData | None = self.gateway.get_contract_by_name(name, MarketType.UM)
             if not contract:
                 continue
 
@@ -883,7 +914,7 @@ class RestApi(RestClient):
         """Callback of CM positions query."""
         for d in data:
             name: str = d["symbol"]
-            contract: ContractData | None = self.gateway.get_contract_by_name(name)
+            contract: ContractData | None = self.gateway.get_contract_by_name(name, MarketType.CM)
             if not contract:
                 continue
 
@@ -916,7 +947,7 @@ class RestApi(RestClient):
             if not order_type:
                 continue
 
-            contract: ContractData | None = self.gateway.get_contract_by_name(d["symbol"])
+            contract: ContractData | None = self.gateway.get_contract_by_name(d["symbol"], MarketType.UM)
             if not contract:
                 continue
 
@@ -945,7 +976,7 @@ class RestApi(RestClient):
             if not order_type:
                 continue
 
-            contract: ContractData | None = self.gateway.get_contract_by_name(d["symbol"])
+            contract: ContractData | None = self.gateway.get_contract_by_name(d["symbol"], MarketType.CM)
             if not contract:
                 continue
 
@@ -974,7 +1005,7 @@ class RestApi(RestClient):
             if not order_type:
                 continue
 
-            contract: ContractData | None = self.gateway.get_contract_by_name(d["symbol"])
+            contract: ContractData | None = self.gateway.get_contract_by_name(d["symbol"], MarketType.MARGIN)
             if not contract:
                 continue
 
@@ -1119,7 +1150,10 @@ class RestApi(RestClient):
         order.status = Status.REJECTED
         self.gateway.on_order(order)
 
-        msg: str = f"Order failed, status code: {status_code}, message: {request.response.text}"
+        data: dict = request.response.json()
+        error_code: int = data["code"]
+        error_msg: str = data["msg"]
+        msg: str = f"Order failed, code: {error_code}, message: {error_msg}"
         self.gateway.write_log(msg)
 
     def on_send_order_error(
@@ -1143,12 +1177,10 @@ class RestApi(RestClient):
 
     def on_cancel_order_failed(self, status_code: int, request: Request) -> None:
         """Callback when cancel order failed."""
-        if request.extra:
-            order: OrderData = request.extra
-            order.status = Status.REJECTED
-            self.gateway.on_order(order)
-
-        msg: str = f"Cancel failed, status code: {status_code}, message: {request.response.text}"
+        data: dict = request.response.json()
+        error_code: int = data["code"]
+        error_msg: str = data["msg"]
+        msg: str = f"Cancel failed, code: {error_code}, message: {error_msg}"
         self.gateway.write_log(msg)
 
     def on_start_user_stream(self, data: dict, request: Request) -> None:
@@ -1355,7 +1387,7 @@ class UserApi(WebsocketClient):
                     volume = int(volume)
 
                 name: str = pos_data["s"]
-                contract: ContractData | None = self.gateway.get_contract_by_name(name)
+                contract: ContractData | None = self.gateway.get_futures_contract_by_name(name)
                 if not contract:
                     continue
 
@@ -1395,7 +1427,7 @@ class UserApi(WebsocketClient):
             return
 
         name: str = ord_data["s"]
-        contract: ContractData | None = self.gateway.get_contract_by_name(name)
+        contract: ContractData | None = self.gateway.get_futures_contract_by_name(name)
         if not contract:
             return
 
@@ -1441,7 +1473,7 @@ class UserApi(WebsocketClient):
             return
 
         name: str = packet["s"]
-        contract: ContractData | None = self.gateway.get_contract_by_name(name)
+        contract: ContractData | None = self.gateway.get_contract_by_name(name, MarketType.MARGIN)
         if not contract:
             return
 
@@ -1592,14 +1624,14 @@ class UmMdApi(WebsocketClient):
 
     def on_packet(self, packet: dict) -> None:
         """Callback of market data update."""
-        stream: str = packet.get("stream", None)
+        stream: str = packet.get("stream", "")
         if not stream:
             return
 
         data: dict = packet["data"]
         name, channel = stream.split("@")
 
-        contract: ContractData | None = self.gateway.get_contract_by_name(name.upper())
+        contract: ContractData | None = self.gateway.get_contract_by_name(name.upper(), MarketType.UM)
         if not contract:
             return
 
@@ -1762,14 +1794,14 @@ class CmMdApi(WebsocketClient):
 
     def on_packet(self, packet: dict) -> None:
         """Callback of market data update."""
-        stream: str = packet.get("stream", None)
+        stream: str = packet.get("stream", "")
         if not stream:
             return
 
         data: dict = packet["data"]
         name, channel = stream.split("@")
 
-        contract: ContractData | None = self.gateway.get_contract_by_name(name.upper())
+        contract: ContractData | None = self.gateway.get_contract_by_name(name.upper(), MarketType.CM)
         if not contract:
             return
 
@@ -1933,12 +1965,12 @@ class MarginMdApi(WebsocketClient):
     def on_packet(self, packet: dict) -> None:
         """Callback of market data update."""
         # Handle stream format
-        stream: str = packet.get("stream", None)
+        stream: str = packet.get("stream", "")
         if stream:
             data: dict = packet["data"]
             name, channel = stream.split("@")
 
-            contract: ContractData | None = self.gateway.get_contract_by_name(name.upper())
+            contract: ContractData | None = self.gateway.get_contract_by_name(name.upper(), MarketType.MARGIN)
             if not contract:
                 return
 
@@ -1994,7 +2026,7 @@ class MarginMdApi(WebsocketClient):
         if not symbol_name:
             return
 
-        contract = self.gateway.get_contract_by_name(symbol_name)
+        contract = self.gateway.get_contract_by_name(symbol_name, MarketType.MARGIN)
         if not contract:
             return
 
