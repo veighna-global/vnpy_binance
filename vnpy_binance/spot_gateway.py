@@ -7,7 +7,6 @@ from typing import cast
 from collections.abc import Callable
 from time import sleep
 from datetime import datetime, timedelta
-from types import TracebackType
 
 from numpy import format_float_positional
 
@@ -45,13 +44,11 @@ UTC_TZ = ZoneInfo("UTC")
 # Real server hosts
 REAL_REST_HOST: str = "https://api.binance.com"
 REAL_TRADE_HOST: str = "wss://ws-api.binance.com/ws-api/v3"
-REAL_USER_HOST: str = "wss://stream.binance.com/ws/"
 REAL_DATA_HOST: str = "wss://stream.binance.com:443"
 
 # Testnet server hosts
 TESTNET_REST_HOST: str = "https://testnet.binance.vision"
 TESTNET_TRADE_HOST: str = "wss://ws-api.testnet.binance.vision/ws-api/v3"
-TESTNET_USER_HOST: str = "wss://stream.testnet.binance.vision/ws/"
 TESTNET_DATA_HOST: str = "wss://stream.testnet.binance.vision/ws"
 
 # Order status map
@@ -139,7 +136,6 @@ class BinanceSpotGateway(BaseGateway):
         super().__init__(event_engine, gateway_name)
 
         self.trade_api: TradeApi = TradeApi(self)
-        self.user_api: UserApi = UserApi(self)
         self.md_api: MdApi = MdApi(self)
         self.rest_api: RestApi = RestApi(self)
 
@@ -244,7 +240,6 @@ class BinanceSpotGateway(BaseGateway):
         This method stops all API connections and releases resources.
         """
         self.rest_api.stop()
-        self.user_api.stop()
         self.md_api.stop()
         self.trade_api.stop()
 
@@ -315,8 +310,6 @@ class BinanceSpotGateway(BaseGateway):
         Parameters:
             event: Timer event object
         """
-        self.rest_api.keep_user_stream()
-
         self.md_api.subscribe_new_channels()
 
 
@@ -347,13 +340,9 @@ class RestApi(RestClient):
         self.gateway: BinanceSpotGateway = gateway
         self.gateway_name: str = gateway.gateway_name
 
-        self.user_api: UserApi = self.gateway.user_api
-
         self.key: str = ""
         self.secret: bytes = b""
 
-        self.user_stream_key: str = ""
-        self.keep_alive_count: int = 0
         self.time_offset: int = 0
 
         self.order_count: int = 1_000_000
@@ -515,49 +504,6 @@ class RestApi(RestClient):
             callback=self.on_query_contract,
         )
 
-    def start_user_stream(self) -> None:
-        """
-        Create listen key for user stream.
-
-        This function sends a request to create a listen key which is
-        required to establish a user data websocket connection.
-        """
-        path: str = "/api/v3/userDataStream"
-
-        self.add_request(
-            method="POST",
-            path=path,
-            callback=self.on_start_user_stream,
-        )
-
-    def keep_user_stream(self) -> None:
-        """
-        Extend listen key validity.
-
-        This function sends a request to keep the listen key active,
-        which is required to maintain the user data websocket connection.
-        The listen key will expire after 60 minutes if not refreshed.
-        """
-        if not self.user_stream_key:
-            return
-
-        self.keep_alive_count += 1
-        if self.keep_alive_count < 600:
-            return
-        self.keep_alive_count = 0
-
-        params: dict = {"listenKey": self.user_stream_key}
-
-        path: str = "/api/v3/userDataStream"
-
-        self.add_request(
-            method="PUT",
-            path=path,
-            callback=self.on_keep_user_stream,
-            params=params,
-            on_error=self.on_keep_user_stream_error
-        )
-
     def on_query_time(self, data: dict, request: Request) -> None:
         """
         Callback of server time query.
@@ -691,57 +637,7 @@ class RestApi(RestClient):
         if self.key and self.secret:
             self.query_order()
             self.query_account()
-            self.start_user_stream()
-
-    def on_start_user_stream(self, data: dict, request: Request) -> None:
-        """
-        Successful callback of start_user_stream.
-
-        This function processes the listen key response and initializes
-        the user data websocket connection with the provided key.
-
-        Parameters:
-            data: Response data from the server containing the listen key
-            request: Original request object
-        """
-        self.user_stream_key = data["listenKey"]
-        self.keep_alive_count = 0
-
-        if self.server == "REAL":
-            url = REAL_USER_HOST + self.user_stream_key
-        else:
-            url = TESTNET_USER_HOST + self.user_stream_key
-
-        self.user_api.connect(url, self.proxy_host, self.proxy_port)
-
-    def on_keep_user_stream(self, data: dict, request: Request) -> None:
-        """
-        Successful callback of keep_user_stream.
-
-        This function handles the successful response of the listen key
-        refresh request. No action is needed on success.
-
-        Parameters:
-            data: Response data from the server
-            request: Original request object
-        """
-        pass
-
-    def on_keep_user_stream_error(self, exc: type, value: Exception, tb: TracebackType, request: Request) -> None:
-        """
-        Error callback of keep_user_stream.
-
-        This function handles errors from the listen key refresh request.
-        Timeout exceptions are ignored as they are common and non-critical.
-
-        Parameters:
-            exc: Type of the exception
-            value: Exception instance
-            tb: Traceback object
-            request: Original request object
-        """
-        if not issubclass(exc, TimeoutError):        # Ignore timeout exception
-            self.on_error(exc, value, tb, request)
+            self.gateway.trade_api.subscribe_user_data_stream()
 
     def query_history(self, req: HistoryRequest) -> list[BarData]:
         """Query kline history data"""
@@ -1072,199 +968,6 @@ class MdApi(WebsocketClient):
         self.gateway.write_log(f"MD API exception: {e}")
 
 
-class UserApi(WebsocketClient):
-    """
-    The user data websocket API of BinanceSpotGateway.
-
-    This class handles user data events from Binance through websocket connection.
-    It processes real-time updates for:
-    - Account balance changes
-    - Order status changes
-    - Trade executions
-    """
-
-    def __init__(self, gateway: BinanceSpotGateway) -> None:
-        """
-        The init method of the API.
-
-        This method initializes the websocket client with a reference to the parent gateway.
-
-        Parameters:
-            gateway: the parent gateway object for pushing callback data
-        """
-        super().__init__()
-
-        self.gateway: BinanceSpotGateway = gateway
-        self.gateway_name: str = gateway.gateway_name
-
-    def connect(self, url: str, proxy_host: str, proxy_port: int) -> None:
-        """
-        Start server connection.
-
-        This method establishes a websocket connection to Binance user data stream.
-
-        Parameters:
-            url: Websocket endpoint URL with listen key
-            proxy_host: Proxy server hostname or IP
-            proxy_port: Proxy server port
-        """
-        self.init(url, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
-        self.start()
-
-    def on_connected(self) -> None:
-        """
-        Callback when server is connected.
-
-        This function is called when the websocket connection to the server
-        is successfully established. It logs the connection status.
-        """
-        self.gateway.write_log("User API connected")
-
-    def on_packet(self, packet: dict) -> None:
-        """
-        Callback of data update.
-
-        This function processes websocket messages from the user data stream.
-        It handles different event types including account updates, order updates,
-        and listen key expiration.
-
-        Parameters:
-            packet: JSON data received from websocket
-        """
-        match packet["e"]:
-            case "outboundAccountPosition":
-                self.on_account(packet)
-            case "executionReport":
-                self.on_order(packet)
-            case "listenKeyExpired":
-                self.on_listen_key_expired()
-
-    def on_listen_key_expired(self) -> None:
-        """
-        Callback of listen key expired.
-
-        This function is called when the exchange notifies that the listen key
-        has expired. It will log a message and disconnect the websocket connection.
-        """
-        self.gateway.write_log("Listen key expired")
-
-    def on_account(self, packet: dict) -> None:
-        """
-        Callback of account balance update.
-
-        This function processes the account update event from the user data stream,
-        including balance changes.
-
-        Parameters:
-            packet: JSON data received from websocket
-        """
-        for balance in packet["B"]:
-            asset = balance["a"]
-            free = float(balance["f"])
-            locked = float(balance["l"])
-
-            if free or locked:
-                account: AccountData = AccountData(
-                    accountid=asset,
-                    balance=free + locked,
-                    frozen=locked,
-                    gateway_name=self.gateway_name
-                )
-                self.gateway.on_account(account)
-
-    def on_order(self, packet: dict) -> None:
-        """
-        Callback of order and trade update.
-
-        This function processes the order update event from the user data stream,
-        including order status changes and trade executions.
-
-        Parameters:
-            packet: JSON data received from websocket
-        """
-        # Extract order data from packet
-        symbol: str = packet["s"]
-
-        if not packet["C"]:
-            orderid: str = packet["c"]      # Normal order
-        else:
-            orderid = packet["C"]           # Cancel order uses original order id
-
-        # Skip if order type is not supported
-        type_str: str = packet["o"]
-        time_in_force: str = packet["f"]
-        key: tuple[str, str] = (type_str, time_in_force)
-        order_type: OrderType | None = ORDERTYPE_BINANCE2VT.get(key, None)
-        if not order_type:
-            return
-
-        # Get contract data
-        contract = self.gateway.get_contract_by_name(symbol)
-        if not contract:
-            return
-
-        # Create order data
-        order = OrderData(
-            symbol=contract.symbol,
-            exchange=Exchange.GLOBAL,
-            orderid=orderid,
-            type=order_type,
-            direction=DIRECTION_BINANCE2VT[packet["S"]],
-            price=float(packet["p"]),
-            volume=float(packet["q"]),
-            traded=float(packet["z"]),
-            status=STATUS_BINANCE2VT[packet["X"]],
-            datetime=generate_datetime(packet["E"]),
-            gateway_name=self.gateway_name,
-        )
-        self.gateway.on_order(order)
-
-        # Check if trade update
-        if float(packet["l"]) <= 0:
-            return
-
-        # Create trade data
-        trade_volume = float(packet["l"])
-        trade = TradeData(
-            symbol=contract.symbol,
-            exchange=Exchange.GLOBAL,
-            orderid=orderid,
-            tradeid=packet["t"],
-            direction=DIRECTION_BINANCE2VT[packet["S"]],
-            price=float(packet["L"]),
-            volume=trade_volume,
-            datetime=generate_datetime(packet["T"]),
-            gateway_name=self.gateway_name,
-        )
-        self.gateway.on_trade(trade)
-
-    def on_disconnected(self, status_code: int, msg: str) -> None:
-        """
-        Callback when server is disconnected.
-
-        This function is called when the websocket connection is closed.
-        It logs the disconnection details and attempts to restart the user stream.
-
-        Parameters:
-            status_code: HTTP status code for the disconnection
-            msg: Disconnection message
-        """
-        self.gateway.write_log(f"User API disconnected, code: {status_code}, msg: {msg}")
-        self.gateway.rest_api.start_user_stream()
-
-    def on_error(self, e: Exception) -> None:
-        """
-        Callback when exception raised.
-
-        This function is called when an exception occurs in the websocket connection.
-        It logs the exception details for troubleshooting.
-
-        Parameters:
-            e: The exception that was raised
-        """
-        self.gateway.write_log(f"User API exception: {e}")
-
-
 class TradeApi(WebsocketClient):
     """
     The trading websocket API of BinanceSpotGateway.
@@ -1306,6 +1009,8 @@ class TradeApi(WebsocketClient):
 
         self.reqid_callback_map: dict[int, Callable] = {}
         self.reqid_order_map: dict[int, OrderData] = {}
+
+        self.user_stream_subscribed: bool = False
 
     def connect(
         self,
@@ -1457,14 +1162,64 @@ class TradeApi(WebsocketClient):
         }
         self.send_packet(packet)
 
+    def subscribe_user_data_stream(self) -> None:
+        """
+        Subscribe to user data stream.
+
+        This function sends a subscription request to receive real-time
+        account and order updates through the websocket API connection.
+        """
+        if not self.key or self.user_stream_subscribed:
+            return
+
+        self.user_stream_subscribed = True
+
+        params: dict = {"apiKey": self.key}
+        self.sign(params)
+
+        self.reqid += 1
+        self.reqid_callback_map[self.reqid] = self.on_subscribe_user_data_stream
+
+        packet: dict = {
+            "id": self.reqid,
+            "method": "userDataStream.subscribe.signature",
+            "params": params,
+        }
+        self.send_packet(packet)
+
+    def on_subscribe_user_data_stream(self, packet: dict) -> None:
+        """
+        Callback of user data stream subscription.
+
+        This function processes the response to the user data stream
+        subscription request. It logs errors if the subscription fails.
+
+        Parameters:
+            packet: JSON data received from websocket
+        """
+        error: dict = packet.get("error", None)
+        if error:
+            self.user_stream_subscribed = False
+
+            error_code: str = error["code"]
+            error_msg: str = error["msg"]
+            self.gateway.write_log(
+                f"User data stream subscription failed, code: {error_code}, message: {error_msg}"
+            )
+            return
+
+        self.gateway.write_log("User data stream subscribed")
+
     def on_connected(self) -> None:
         """
         Callback when server is connected.
 
         This function is called when the trading websocket connection
-        is successfully established. It logs the connection status.
+        is successfully established. It logs the connection status
+        and subscribes to the user data stream.
         """
         self.gateway.write_log("Trade API connected")
+        self.subscribe_user_data_stream()
 
     def on_disconnected(self, status_code: int, msg: str) -> None:
         """
@@ -1478,22 +1233,130 @@ class TradeApi(WebsocketClient):
             msg: Disconnection message
         """
         self.gateway.write_log(f"Trade API disconnected, code: {status_code}, msg: {msg}")
+        self.user_stream_subscribed = False
 
     def on_packet(self, packet: dict) -> None:
         """
         Callback of data update.
 
-        This function processes responses from the trading websocket API.
-        It routes the response to the appropriate callback function based
-        on the request ID.
+        This function processes responses from the trading websocket API
+        and user data stream events. Trade responses are routed by request ID,
+        while user data events are routed by event type.
 
         Parameters:
             packet: JSON data received from websocket
         """
+        # User data stream event
+        event: dict = packet.get("event", None)
+        if event:
+            self.on_user_data_event(event)
+            return
+
+        # Trade API response
         reqid: int = packet.get("id", 0)
         callback: Callable | None = self.reqid_callback_map.get(reqid, None)
         if callback:
             callback(packet)
+
+    def on_user_data_event(self, event: dict) -> None:
+        """
+        Process user data stream event.
+
+        This function routes user data stream events to the appropriate
+        handler based on the event type.
+
+        Parameters:
+            event: Event payload from user data stream
+        """
+        match event["e"]:
+            case "outboundAccountPosition":
+                self.on_account(event)
+            case "executionReport":
+                self.on_order(event)
+
+    def on_account(self, event: dict) -> None:
+        """
+        Callback of account balance update.
+
+        This function processes the account update event from the user data stream,
+        including balance changes.
+
+        Parameters:
+            event: Event payload from user data stream
+        """
+        for balance in event["B"]:
+            asset = balance["a"]
+            free = float(balance["f"])
+            locked = float(balance["l"])
+
+            if free or locked:
+                account: AccountData = AccountData(
+                    accountid=asset,
+                    balance=free + locked,
+                    frozen=locked,
+                    gateway_name=self.gateway_name
+                )
+                self.gateway.on_account(account)
+
+    def on_order(self, event: dict) -> None:
+        """
+        Callback of order and trade update.
+
+        This function processes the order update event from the user data stream,
+        including order status changes and trade executions.
+
+        Parameters:
+            event: Event payload from user data stream
+        """
+        symbol: str = event["s"]
+
+        if not event["C"]:
+            orderid: str = event["c"]
+        else:
+            orderid = event["C"]
+
+        type_str: str = event["o"]
+        time_in_force: str = event["f"]
+        key: tuple[str, str] = (type_str, time_in_force)
+        order_type: OrderType | None = ORDERTYPE_BINANCE2VT.get(key, None)
+        if not order_type:
+            return
+
+        contract = self.gateway.get_contract_by_name(symbol)
+        if not contract:
+            return
+
+        order = OrderData(
+            symbol=contract.symbol,
+            exchange=Exchange.GLOBAL,
+            orderid=orderid,
+            type=order_type,
+            direction=DIRECTION_BINANCE2VT[event["S"]],
+            price=float(event["p"]),
+            volume=float(event["q"]),
+            traded=float(event["z"]),
+            status=STATUS_BINANCE2VT[event["X"]],
+            datetime=generate_datetime(event["E"]),
+            gateway_name=self.gateway_name,
+        )
+        self.gateway.on_order(order)
+
+        if float(event["l"]) <= 0:
+            return
+
+        trade_volume = float(event["l"])
+        trade = TradeData(
+            symbol=contract.symbol,
+            exchange=Exchange.GLOBAL,
+            orderid=orderid,
+            tradeid=event["t"],
+            direction=DIRECTION_BINANCE2VT[event["S"]],
+            price=float(event["L"]),
+            volume=trade_volume,
+            datetime=generate_datetime(event["T"]),
+            gateway_name=self.gateway_name,
+        )
+        self.gateway.on_trade(trade)
 
     def on_send_order(self, packet: dict) -> None:
         """
