@@ -1189,6 +1189,10 @@ class MdApi(WebsocketClient):
                 if self.kline_stream:
                     channels.append(f"{symbol}@kline_1m")
 
+                contract: ContractData | None = self.gateway.get_contract_by_symbol(symbol)
+                if contract and contract.product == Product.SWAP:
+                    channels.append(f"{symbol}@markPrice")
+
             packet: dict = {
                 "method": "SUBSCRIBE",
                 "params": channels,
@@ -1235,6 +1239,9 @@ class MdApi(WebsocketClient):
 
         if self.kline_stream:
             channels.append(f"{contract.name.lower()}@kline_1m")
+
+        if contract.product == Product.SWAP:
+            channels.append(f"{contract.name.lower()}@markPrice")
 
         self.new_channels.extend(channels)
 
@@ -1300,6 +1307,11 @@ class MdApi(WebsocketClient):
                 price, volume = asks[n]
                 tick.__setattr__("ask_price_" + str(n + 1), float(price))
                 tick.__setattr__("ask_volume_" + str(n + 1), float(volume))
+        elif channel == "markPrice":
+            if tick.extra is None:
+                tick.extra = {}
+            tick.extra["funding_rate"] = float(data["r"])
+            tick.extra["funding_time"] = int(data["T"])
         else:
             kline_data: dict = data["k"]
 
