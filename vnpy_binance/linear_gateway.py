@@ -3,7 +3,7 @@ import hmac
 import time
 import urllib.parse
 from copy import copy
-from typing import cast, Any
+from typing import Any
 from collections.abc import Callable
 from time import sleep
 from datetime import datetime, timedelta
@@ -132,7 +132,7 @@ class BinanceLinearGateway(BaseGateway):
         "Proxy Port": 0
     }
 
-    exchanges: Exchange = [Exchange.GLOBAL]
+    exchanges: list[Exchange] = [Exchange.GLOBAL]
 
     def __init__(self, event_engine: EventEngine, gateway_name: str) -> None:
         """
@@ -282,7 +282,7 @@ class BinanceLinearGateway(BaseGateway):
         self.orders[order.orderid] = copy(order)
         super().on_order(order)
 
-    def get_order(self, orderid: str) -> OrderData:
+    def get_order(self, orderid: str) -> OrderData | None:
         """
         Get previously saved order by order id.
 
@@ -685,7 +685,7 @@ class RestApi(RestClient):
                 type=order_type,
                 direction=DIRECTION_BINANCE2VT[d["side"]],
                 traded=float(d["executedQty"]),
-                status=STATUS_BINANCE2VT.get(d["status"], None),
+                status=STATUS_BINANCE2VT[d["status"]],
                 datetime=generate_datetime(d["time"]),
                 gateway_name=self.gateway_name,
             )
@@ -718,7 +718,7 @@ class RestApi(RestClient):
                     min_volume = float(f["minQty"])
                     max_volume = float(f["maxQty"])
 
-            product: Product = PRODUCT_BINANCE2VT.get(d["contractType"], None)
+            product: Product | None = PRODUCT_BINANCE2VT.get(d["contractType"], None)
             if product == Product.SWAP:
                 symbol: str = d["symbol"] + "_SWAP_BINANCE"
             elif product == Product.FUTURES:
@@ -803,9 +803,12 @@ class RestApi(RestClient):
 
     def query_history(self, req: HistoryRequest) -> list[BarData]:
         """Query kline history data"""
-        # Check if the contract exists
+        # Check if the contract and interval exist
         contract: ContractData | None = self.gateway.get_contract_by_symbol(req.symbol)
         if not contract:
+            return []
+
+        if not req.interval:
             return []
 
         # Prepare history list
@@ -1265,14 +1268,16 @@ class MdApi(WebsocketClient):
         Parameters:
             packet: JSON data received from websocket
         """
-        stream: str = packet.get("stream", None)
+        stream: str | None = packet.get("stream", None)
         if not stream:
             return
 
         data: dict = packet["data"]
 
         name, channel = stream.split("@")
-        contract: ContractData = self.gateway.get_contract_by_name(name.upper())
+        contract: ContractData | None = self.gateway.get_contract_by_name(name.upper())
+        if not contract:
+            return
         tick: TickData = self.ticks[contract.symbol]
 
         if channel == "ticker":
@@ -1302,6 +1307,9 @@ class MdApi(WebsocketClient):
             bar_ready: bool = kline_data.get("x", False)
             if not bar_ready:
                 return
+
+            if tick.extra is None:
+                tick.extra = {}
 
             dt: datetime = generate_datetime(float(kline_data["t"]))
 
@@ -1507,7 +1515,7 @@ class TradeApi(WebsocketClient):
             "params": params,
         }
         self.send_packet(packet)
-        return cast(str, order.vt_orderid)
+        return order.vt_orderid
 
     def cancel_order(self, req: CancelRequest) -> None:
         """
@@ -1588,7 +1596,7 @@ class TradeApi(WebsocketClient):
         Parameters:
             packet: JSON data received from websocket
         """
-        error: dict = packet.get("error", None)
+        error: dict | None = packet.get("error", None)
         if not error:
             return
 
@@ -1598,7 +1606,7 @@ class TradeApi(WebsocketClient):
         self.gateway.write_log(msg)
 
         reqid: int = packet.get("id", 0)
-        order: OrderData = self.reqid_order_map.get(reqid, None)
+        order: OrderData | None = self.reqid_order_map.get(reqid, None)
         if order:
             order.status = Status.REJECTED
             self.gateway.on_order(order)
@@ -1613,7 +1621,7 @@ class TradeApi(WebsocketClient):
         Parameters:
             packet: JSON data received from websocket
         """
-        error: dict = packet.get("error", None)
+        error: dict | None = packet.get("error", None)
         if not error:
             return
 
