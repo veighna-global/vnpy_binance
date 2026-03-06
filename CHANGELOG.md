@@ -1,3 +1,9 @@
+# 2026.03.06
+
+1. new PortfolioGateway for portfolio margin mode
+2. update SpotGateway to latest version
+3. support funding rate subscription for linear swap
+
 # 2026.01.25
 
 1. use periodic subscription mechanism to avoid connection loss
