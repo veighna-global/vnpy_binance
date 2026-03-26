@@ -106,6 +106,7 @@ DIRECTION_BINANCE2VT: dict[str, Direction] = {
 PRODUCT_BINANCE2VT: dict[str, Product] = {
     "PERPETUAL": Product.SWAP,
     "PERPETUAL_DELIVERING": Product.SWAP,
+    "TRADIFI_PERPETUAL": Product.SWAP,
     "CURRENT_MONTH": Product.FUTURES,
     "NEXT_MONTH": Product.FUTURES,
     "CURRENT_QUARTER": Product.FUTURES,
