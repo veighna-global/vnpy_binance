@@ -1,3 +1,7 @@
+# 2026.03.26
+
+1. support TRADIFI_PERPETUAL contract
+
 # 2026.03.06
 
 1. new PortfolioGateway for portfolio margin mode
