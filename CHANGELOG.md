@@ -1,3 +1,7 @@
+# 2026.03.27
+
+1. add TRADIFI_PERPETUAL contract support for portfolio gateway
+
 # 2026.03.26
 
 1. support TRADIFI_PERPETUAL contract
