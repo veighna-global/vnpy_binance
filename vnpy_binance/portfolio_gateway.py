@@ -1660,6 +1660,8 @@ class UmMdApi(WebsocketClient):
                 price, volume = asks[n]
                 tick.__setattr__("ask_price_" + str(n + 1), float(price))
                 tick.__setattr__("ask_volume_" + str(n + 1), float(volume))
+
+            tick.datetime = generate_datetime(float(data["E"]))
         else:
             kline_data: dict = data["k"]
             bar_ready: bool = kline_data.get("x", False)
@@ -1830,6 +1832,8 @@ class CmMdApi(WebsocketClient):
                 price, volume = asks[n]
                 tick.__setattr__("ask_price_" + str(n + 1), float(price))
                 tick.__setattr__("ask_volume_" + str(n + 1), float(volume))
+
+            tick.datetime = generate_datetime(float(data["E"]))
         else:
             kline_data: dict = data["k"]
             bar_ready: bool = kline_data.get("x", False)
@@ -1992,6 +1996,8 @@ class MarginMdApi(WebsocketClient):
                 tick.bid_volume_1 = float(data["B"])
                 tick.ask_price_1 = float(data["a"])
                 tick.ask_volume_1 = float(data["A"])
+
+                tick.datetime = generate_datetime(float(data["E"]))
             elif channel.startswith("kline"):
                 kline_data: dict = data["k"]
                 bar_ready: bool = kline_data.get("x", False)
