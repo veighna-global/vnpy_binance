@@ -1303,6 +1303,7 @@ class MdApi(WebsocketClient):
                 price, volume = asks[n]
                 tick.__setattr__("ask_price_" + str(n + 1), float(price))
                 tick.__setattr__("ask_volume_" + str(n + 1), float(volume))
+            tick.datetime = generate_datetime(float(data["E"]))
         else:
             kline_data: dict = data["k"]
 
