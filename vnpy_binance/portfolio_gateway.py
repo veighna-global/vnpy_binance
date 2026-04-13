@@ -1295,11 +1295,13 @@ class RestApi(RestClient):
                 msg = f"Query kline history finished, {req.symbol} - {req.interval.value}, {begin} - {end}"
                 self.gateway.write_log(msg)
 
-                if len(data) < limit or (req.end and end >= req.end):
+                next_start_dt = bar.datetime + TIMEDELTA_MAP[req.interval]
+                next_start_time = int(datetime.timestamp(next_start_dt))
+
+                if len(data) < limit or (req.end and next_start_dt >= req.end):
                     break
 
-                start_dt = bar.datetime + TIMEDELTA_MAP[req.interval]
-                start_time = int(datetime.timestamp(start_dt))
+                start_time = next_start_time
 
             sleep(0.5)
 
