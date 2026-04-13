@@ -1,3 +1,8 @@
+# 2026.04.13
+
+1. update tick.datetime when receiving book update
+2. fix bug: start time is greater than end time when querying bar history
+
 # 2026.03.27
 
 1. add TRADIFI_PERPETUAL contract support for portfolio gateway
