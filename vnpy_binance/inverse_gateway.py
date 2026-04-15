@@ -816,11 +816,14 @@ class RestApi(RestClient):
         # Prepare history list
         history: list[BarData] = []
         limit: int = 1500
-
-        # Convert start time to milliseconds
-        start_time: int = int(datetime.timestamp(req.start))
+        interval_delta: timedelta = TIMEDELTA_MAP[req.interval]
+        page_span: timedelta = interval_delta * (limit - 1)
+        current_start_dt: datetime = req.start
 
         while True:
+            if req.end and current_start_dt >= req.end:
+                break
+
             # Create query parameters
             params: dict = {
                 "symbol": contract.name,
@@ -828,11 +831,11 @@ class RestApi(RestClient):
                 "limit": limit
             }
 
-            params["startTime"] = start_time * 1000
+            params["startTime"] = int(datetime.timestamp(current_start_dt)) * 1000
             path: str = "/dapi/v1/klines"
             if req.end:
-                end_time = int(datetime.timestamp(req.end))
-                params["endTime"] = end_time * 1000     # Convert to milliseconds
+                page_end_dt: datetime = min(req.end, current_start_dt + page_span)
+                params["endTime"] = int(datetime.timestamp(page_end_dt)) * 1000
 
             resp: Response = self.request(
                 "GET",
@@ -846,9 +849,9 @@ class RestApi(RestClient):
                 self.gateway.write_log(msg)
                 break
             else:
-                data: dict = resp.json()
+                data: list = resp.json()
                 if not data:
-                    msg = f"No kline history data is received, start time: {start_time}"
+                    msg = f"No kline history data is received, start time: {current_start_dt}"
                     self.gateway.write_log(msg)
                     break
 
@@ -875,15 +878,22 @@ class RestApi(RestClient):
                     }
                     buf.append(bar)
 
-                begin: datetime = buf[0].datetime
-                end: datetime = buf[-1].datetime
+                begin_dt: datetime = buf[0].datetime
+                end_dt: datetime = buf[-1].datetime
 
                 history.extend(buf)
-                msg = f"Query kline history finished, {req.symbol} - {req.interval.value}, {begin} - {end}"
+                msg = f"Query kline history finished, {req.symbol} - {req.interval.value}, {begin_dt} - {end_dt}"
                 self.gateway.write_log(msg)
 
-                next_start_dt = bar.datetime + TIMEDELTA_MAP[req.interval]
-                next_start_time = int(datetime.timestamp(next_start_dt))
+                next_start_dt: datetime = end_dt + interval_delta
+
+                if next_start_dt <= current_start_dt:
+                    msg = (
+                        "Query kline history pagination stopped because received data "
+                        f"did not advance, start: {current_start_dt}, end: {end_dt}"
+                    )
+                    self.gateway.write_log(msg)
+                    break
 
                 # Break the loop if the latest data received
                 if (
@@ -893,7 +903,7 @@ class RestApi(RestClient):
                     break
 
                 # Update query start time
-                start_time = next_start_time
+                current_start_dt = next_start_dt
 
             # Wait to meet request flow limit
             sleep(0.5)
