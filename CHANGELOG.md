@@ -1,3 +1,7 @@
+# 2026.04.15
+
+1. fix missing data when querying bar history of inverse contract
+
 # 2026.04.13
 
 1. update tick.datetime when receiving book update
