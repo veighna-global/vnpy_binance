@@ -57,7 +57,8 @@ REAL_CM_REST_HOST: str = "https://dapi.binance.com"
 REAL_MARGIN_REST_HOST: str = "https://api.binance.com"
 
 REAL_USER_HOST: str = "wss://fstream.binance.com/pm/ws/"
-REAL_UM_DATA_HOST: str = "wss://fstream.binance.com/stream"
+REAL_UM_PUBLIC_HOST: str = "wss://fstream.binance.com/public/stream"
+REAL_UM_MARKET_HOST: str = "wss://fstream.binance.com/market/stream"
 REAL_CM_DATA_HOST: str = "wss://dstream.binance.com/stream"
 REAL_MARGIN_DATA_HOST: str = "wss://stream.binance.com:9443/stream"
 
@@ -68,7 +69,8 @@ TESTNET_CM_REST_HOST: str = "https://testnet.binancefuture.com"
 TESTNET_MARGIN_REST_HOST: str = "https://testnet.binance.vision"
 
 TESTNET_USER_HOST: str = "wss://stream.binancefuture.com/ws/"
-TESTNET_UM_DATA_HOST: str = "wss://stream.binancefuture.com/stream"
+TESTNET_UM_PUBLIC_HOST: str = "wss://fstream.binancefuture.com/public/stream"
+TESTNET_UM_MARKET_HOST: str = "wss://fstream.binancefuture.com/market/stream"
 TESTNET_CM_DATA_HOST: str = "wss://dstream.binancefuture.com/stream"
 TESTNET_MARGIN_DATA_HOST: str = "wss://testnet.binance.vision/stream"
 
@@ -1548,6 +1550,7 @@ class UmMdApi(WebsocketClient):
         self.gateway_name: str = gateway.gateway_name
 
         self.ticks: dict[str, TickData] = {}
+        self.public_api: UmPublicMdApi = UmPublicMdApi(self)
         self.reqid: int = 0
         self.kline_stream: bool = False
 
@@ -1562,31 +1565,77 @@ class UmMdApi(WebsocketClient):
         self.kline_stream = kline_stream
 
         if server == "REAL":
-            self.init(REAL_UM_DATA_HOST, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
+            self.init(REAL_UM_MARKET_HOST, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
+            self.public_api.connect(REAL_UM_PUBLIC_HOST, proxy_host, proxy_port)
         else:
-            self.init(TESTNET_UM_DATA_HOST, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
+            self.init(TESTNET_UM_MARKET_HOST, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
+            self.public_api.connect(TESTNET_UM_PUBLIC_HOST, proxy_host, proxy_port)
 
         self.start()
+
+    def stop(self) -> None:
+        """Stop market data websocket connections."""
+        self.public_api.stop()
+        super().stop()
+
+    def get_public_channels(self, contract: ContractData) -> list[str]:
+        """Generate public market data channels for a contract."""
+        return [f"{contract.name.lower()}@depth10"]
+
+    def get_market_channels(self, contract: ContractData) -> list[str]:
+        """Generate market data channels for a contract."""
+        channels: list[str] = [f"{contract.name.lower()}@ticker"]
+
+        if self.kline_stream:
+            channels.append(f"{contract.name.lower()}@kline_1m")
+
+        return channels
+
+    def send_subscribe_packet(self, api: WebsocketClient, channels: list[str]) -> None:
+        """Send a subscribe packet through the given websocket client."""
+        if not channels:
+            return
+
+        self.reqid += 1
+        packet: dict = {
+            "method": "SUBSCRIBE",
+            "params": channels,
+            "id": self.reqid
+        }
+        api.send_packet(packet)
+
+    def resubscribe_market_channels(self) -> None:
+        """Resubscribe market channels after reconnect."""
+        channels: list[str] = []
+
+        for symbol in self.ticks.keys():
+            contract: ContractData | None = self.gateway.get_contract_by_symbol(symbol)
+            if not contract:
+                continue
+
+            channels.extend(self.get_market_channels(contract))
+
+        self.send_subscribe_packet(self, channels)
+
+    def resubscribe_public_channels(self) -> None:
+        """Resubscribe public channels after reconnect."""
+        channels: list[str] = []
+
+        for symbol in self.ticks.keys():
+            contract: ContractData | None = self.gateway.get_contract_by_symbol(symbol)
+            if not contract:
+                continue
+
+            channels.extend(self.get_public_channels(contract))
+
+        self.send_subscribe_packet(self.public_api, channels)
 
     def on_connected(self) -> None:
         """Callback when server is connected."""
         self.gateway.write_log("UM MD API connected")
 
         if self.ticks:
-            channels = []
-            for symbol in self.ticks.keys():
-                channels.append(f"{symbol}@ticker")
-                channels.append(f"{symbol}@depth10")
-
-                if self.kline_stream:
-                    channels.append(f"{symbol}@kline_1m")
-
-            packet: dict = {
-                "method": "SUBSCRIBE",
-                "params": channels,
-                "id": self.reqid
-            }
-            self.send_packet(packet)
+            self.resubscribe_market_channels()
 
     def subscribe(self, req: SubscribeRequest) -> None:
         """Subscribe to market data."""
@@ -1598,8 +1647,6 @@ class UmMdApi(WebsocketClient):
             self.gateway.write_log(f"Failed to subscribe data, symbol not found: {req.symbol}")
             return
 
-        self.reqid += 1
-
         tick: TickData = TickData(
             symbol=req.symbol,
             name=contract.name,
@@ -1610,20 +1657,8 @@ class UmMdApi(WebsocketClient):
         tick.extra = {}
         self.ticks[req.symbol] = tick
 
-        channels: list[str] = [
-            f"{contract.name.lower()}@ticker",
-            f"{contract.name.lower()}@depth10"
-        ]
-
-        if self.kline_stream:
-            channels.append(f"{contract.name.lower()}@kline_1m")
-
-        packet: dict = {
-            "method": "SUBSCRIBE",
-            "params": channels,
-            "id": self.reqid
-        }
-        self.send_packet(packet)
+        self.send_subscribe_packet(self, self.get_market_channels(contract))
+        self.send_subscribe_packet(self.public_api, self.get_public_channels(contract))
 
     def on_packet(self, packet: dict) -> None:
         """Callback of market data update."""
@@ -1632,7 +1667,7 @@ class UmMdApi(WebsocketClient):
             return
 
         data: dict = packet["data"]
-        name, channel = stream.split("@")
+        name, channel = stream.split("@", 1)
 
         contract: ContractData | None = self.gateway.get_contract_by_name(name.upper(), MarketType.UM)
         if not contract:
@@ -1700,6 +1735,40 @@ class UmMdApi(WebsocketClient):
     def on_error(self, e: Exception) -> None:
         """Callback when exception raised."""
         self.gateway.write_log(f"UM MD API exception: {e}")
+
+
+class UmPublicMdApi(WebsocketClient):
+    """Public market data websocket connection for UM high-frequency streams."""
+
+    def __init__(self, md_api: UmMdApi) -> None:
+        """Initialize the API."""
+        super().__init__()
+
+        self.md_api: UmMdApi = md_api
+        self.gateway: BinancePortfolioGateway = md_api.gateway
+
+    def connect(self, url: str, proxy_host: str, proxy_port: int) -> None:
+        """Start public market data websocket connection."""
+        self.init(url, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
+        self.start()
+
+    def on_connected(self) -> None:
+        """Callback when public websocket is connected."""
+        self.gateway.write_log("UM Public API connected")
+        if self.md_api.ticks:
+            self.md_api.resubscribe_public_channels()
+
+    def on_packet(self, packet: dict) -> None:
+        """Forward packets to the shared UM market data parser."""
+        self.md_api.on_packet(packet)
+
+    def on_disconnected(self, status_code: int, msg: str) -> None:
+        """Callback when public websocket is disconnected."""
+        self.gateway.write_log(f"UM Public API disconnected, code: {status_code}, msg: {msg}")
+
+    def on_error(self, e: Exception) -> None:
+        """Callback when public websocket raises an exception."""
+        self.gateway.write_log(f"UM Public API exception: {e}")
 
 
 class CmMdApi(WebsocketClient):

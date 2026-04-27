@@ -5,7 +5,8 @@ from vnpy.trader.ui import MainWindow, create_qapp
 from vnpy_binance import (
     BinanceLinearGateway,
     BinanceInverseGateway,
-    BinanceSpotGateway
+    BinanceSpotGateway,
+    BinancePortfolioGateway
 )
 from vnpy_datamanager import DataManagerApp
 
@@ -19,6 +20,7 @@ def main() -> None:
     main_engine.add_gateway(BinanceLinearGateway)
     main_engine.add_gateway(BinanceInverseGateway)
     main_engine.add_gateway(BinanceSpotGateway)
+    main_engine.add_gateway(BinancePortfolioGateway)
 
     main_engine.add_app(DataManagerApp)
 
