@@ -45,14 +45,16 @@ UTC_TZ = ZoneInfo("UTC")
 # Real server hosts
 REAL_REST_HOST: str = "https://fapi.binance.com"
 REAL_TRADE_HOST: str = "wss://ws-fapi.binance.com/ws-fapi/v1"
-REAL_USER_HOST: str = "wss://fstream.binance.com/ws/"
-REAL_DATA_HOST: str = "wss://fstream.binance.com/stream"
+REAL_USER_HOST: str = "wss://fstream.binance.com/private/ws"
+REAL_PUBLIC_HOST: str = "wss://fstream.binance.com/public/stream"
+REAL_MARKET_HOST: str = "wss://fstream.binance.com/market/stream"
 
 # Testnet server hosts
-TESTNET_REST_HOST: str = "https://testnet.binancefuture.com"
+TESTNET_REST_HOST: str = "https://demo-fapi.binance.com"
 TESTNET_TRADE_HOST: str = "wss://testnet.binancefuture.com/ws-fapi/v1"
-TESTNET_USER_HOST: str = "wss://stream.binancefuture.com/ws/"
-TESTNET_DATA_HOST: str = "wss://stream.binancefuture.com/stream"
+TESTNET_USER_HOST: str = "wss://fstream.binancefuture.com/private/ws"
+TESTNET_PUBLIC_HOST: str = "wss://fstream.binancefuture.com/public/stream"
+TESTNET_MARKET_HOST: str = "wss://fstream.binancefuture.com/market/stream"
 
 # Order status map
 STATUS_BINANCE2VT: dict[str, Status] = {
@@ -766,10 +768,18 @@ class RestApi(RestClient):
         self.user_stream_key = data["listenKey"]
         self.keep_alive_count = 0
 
+        params: str = urllib.parse.urlencode(
+            {
+                "listenKey": self.user_stream_key,
+                "events": "ORDER_TRADE_UPDATE/ACCOUNT_UPDATE",
+            },
+            safe="/"
+        )
+
         if self.server == "REAL":
-            url = REAL_USER_HOST + self.user_stream_key
+            url = f"{REAL_USER_HOST}?{params}"
         else:
-            url = TESTNET_USER_HOST + self.user_stream_key
+            url = f"{TESTNET_USER_HOST}?{params}"
 
         self.user_api.connect(url, self.proxy_host, self.proxy_port)
 
@@ -1140,10 +1150,12 @@ class MdApi(WebsocketClient):
         self.gateway_name: str = gateway.gateway_name
 
         self.ticks: dict[str, TickData] = {}
+        self.public_api: PublicApi = PublicApi(self)
         self.reqid: int = 0
         self.kline_stream: bool = False
 
-        self.new_channels: list[str] = []
+        self.new_public_channels: list[str] = []
+        self.new_market_channels: list[str] = []
 
     def connect(
         self,
@@ -1166,11 +1178,73 @@ class MdApi(WebsocketClient):
         self.kline_stream = kline_stream
 
         if server == "REAL":
-            self.init(REAL_DATA_HOST, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
+            self.init(REAL_MARKET_HOST, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
+            self.public_api.connect(REAL_PUBLIC_HOST, proxy_host, proxy_port)
         else:
-            self.init(TESTNET_DATA_HOST, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
+            self.init(TESTNET_MARKET_HOST, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
+            self.public_api.connect(TESTNET_PUBLIC_HOST, proxy_host, proxy_port)
 
         self.start()
+
+    def stop(self) -> None:
+        """Stop market data websocket connections."""
+        self.public_api.stop()
+        super().stop()
+
+    def get_public_channels(self, contract: ContractData) -> list[str]:
+        """Generate public market data channels for a contract."""
+        return [f"{contract.name.lower()}@depth10"]
+
+    def get_market_channels(self, contract: ContractData) -> list[str]:
+        """Generate market data channels for a contract."""
+        channels: list[str] = [f"{contract.name.lower()}@ticker"]
+
+        if self.kline_stream:
+            channels.append(f"{contract.name.lower()}@kline_1m")
+
+        if contract.product == Product.SWAP:
+            channels.append(f"{contract.name.lower()}@markPrice")
+
+        return channels
+
+    def send_subscribe_packet(self, api: WebsocketClient, channels: list[str]) -> None:
+        """Send a subscribe packet through the given websocket client."""
+        if not channels:
+            return
+
+        self.reqid += 1
+        packet: dict = {
+            "method": "SUBSCRIBE",
+            "params": channels,
+            "id": self.reqid
+        }
+        api.send_packet(packet)
+
+    def resubscribe_market_channels(self) -> None:
+        """Resubscribe market channels after reconnect."""
+        channels: list[str] = []
+
+        for symbol in self.ticks.keys():
+            contract: ContractData | None = self.gateway.get_contract_by_symbol(symbol)
+            if not contract:
+                continue
+
+            channels.extend(self.get_market_channels(contract))
+
+        self.send_subscribe_packet(self, channels)
+
+    def resubscribe_public_channels(self) -> None:
+        """Resubscribe public channels after reconnect."""
+        channels: list[str] = []
+
+        for symbol in self.ticks.keys():
+            contract: ContractData | None = self.gateway.get_contract_by_symbol(symbol)
+            if not contract:
+                continue
+
+            channels.extend(self.get_public_channels(contract))
+
+        self.send_subscribe_packet(self.public_api, channels)
 
     def on_connected(self) -> None:
         """
@@ -1184,24 +1258,7 @@ class MdApi(WebsocketClient):
 
         # Resubscribe market data
         if self.ticks:
-            channels = []
-            for symbol in self.ticks.keys():
-                channels.append(f"{symbol}@ticker")
-                channels.append(f"{symbol}@depth10")
-
-                if self.kline_stream:
-                    channels.append(f"{symbol}@kline_1m")
-
-                contract: ContractData | None = self.gateway.get_contract_by_symbol(symbol)
-                if contract and contract.product == Product.SWAP:
-                    channels.append(f"{symbol}@markPrice")
-
-            packet: dict = {
-                "method": "SUBSCRIBE",
-                "params": channels,
-                "id": self.reqid
-            }
-            self.send_packet(packet)
+            self.resubscribe_market_channels()
 
     def subscribe(self, req: SubscribeRequest) -> None:
         """
@@ -1235,18 +1292,8 @@ class MdApi(WebsocketClient):
         tick.extra = {}
         self.ticks[req.symbol] = tick
 
-        channels: list[str] = [
-            f"{contract.name.lower()}@ticker",
-            f"{contract.name.lower()}@depth10"
-        ]
-
-        if self.kline_stream:
-            channels.append(f"{contract.name.lower()}@kline_1m")
-
-        if contract.product == Product.SWAP:
-            channels.append(f"{contract.name.lower()}@markPrice")
-
-        self.new_channels.extend(channels)
+        self.new_public_channels.extend(self.get_public_channels(contract))
+        self.new_market_channels.extend(self.get_market_channels(contract))
 
     def subscribe_new_channels(self) -> None:
         """
@@ -1255,17 +1302,11 @@ class MdApi(WebsocketClient):
         This function sends subscription requests for new channels
         to the market data websocket server.
         """
-        if not self.new_channels:
-            return
+        self.send_subscribe_packet(self, self.new_market_channels)
+        self.send_subscribe_packet(self.public_api, self.new_public_channels)
 
-        packet: dict = {
-            "method": "SUBSCRIBE",
-            "params": self.new_channels,
-            "id": self.reqid
-        }
-        self.send_packet(packet)
-
-        self.new_channels = []
+        self.new_market_channels = []
+        self.new_public_channels = []
 
     def on_packet(self, packet: dict) -> None:
         """
@@ -1284,7 +1325,7 @@ class MdApi(WebsocketClient):
 
         data: dict = packet["data"]
 
-        name, channel = stream.split("@")
+        name, channel = stream.split("@", 1)
         contract: ContractData | None = self.gateway.get_contract_by_name(name.upper())
         if not contract:
             return
@@ -1371,6 +1412,38 @@ class MdApi(WebsocketClient):
             e: The exception that was raised
         """
         self.gateway.write_log(f"MD API exception: {e}")
+
+
+class PublicApi(WebsocketClient):
+    """Public market data websocket connection for high-frequency streams."""
+
+    def __init__(self, md_api: MdApi) -> None:
+        super().__init__()
+        self.md_api: MdApi = md_api
+        self.gateway: BinanceLinearGateway = md_api.gateway
+
+    def connect(self, url: str, proxy_host: str, proxy_port: int) -> None:
+        """Start public market data websocket connection."""
+        self.init(url, proxy_host, proxy_port, receive_timeout=WEBSOCKET_TIMEOUT)
+        self.start()
+
+    def on_connected(self) -> None:
+        """Callback when public websocket is connected."""
+        self.gateway.write_log("Public API connected")
+        if self.md_api.ticks:
+            self.md_api.resubscribe_public_channels()
+
+    def on_packet(self, packet: dict) -> None:
+        """Forward packets to the shared market data parser."""
+        self.md_api.on_packet(packet)
+
+    def on_disconnected(self, status_code: int, msg: str) -> None:
+        """Callback when public websocket is disconnected."""
+        self.gateway.write_log(f"MD Public API disconnected, code: {status_code}, msg: {msg}")
+
+    def on_error(self, e: Exception) -> None:
+        """Callback when public websocket raises an exception."""
+        self.gateway.write_log(f"MD Public API exception: {e}")
 
 
 class TradeApi(WebsocketClient):
