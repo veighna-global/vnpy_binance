@@ -1,3 +1,7 @@
+# 2026.04.27
+
+1. update linear and portfolio gateways with new endpoints for routed streams
+
 # 2026.04.15
 
 1. fix missing data when querying bar history of inverse contract
