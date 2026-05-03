@@ -1,3 +1,7 @@
+# 2026.05.03
+
+1. fix margin book ticker event time handling
+
 # 2026.04.27
 
 1. update linear and portfolio gateways with new endpoints for routed streams
