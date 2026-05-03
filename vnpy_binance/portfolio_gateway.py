@@ -2068,7 +2068,8 @@ class MarginMdApi(WebsocketClient):
                 tick.ask_price_1 = float(data["a"])
                 tick.ask_volume_1 = float(data["A"])
 
-                tick.datetime = generate_datetime(float(data["E"]))
+                if data.get("E"):
+                    tick.datetime = generate_datetime(float(data["E"]))
             elif channel.startswith("kline"):
                 kline_data: dict = data["k"]
                 bar_ready: bool = kline_data.get("x", False)
