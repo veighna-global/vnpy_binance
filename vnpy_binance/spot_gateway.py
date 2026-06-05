@@ -807,11 +807,16 @@ class MdApi(WebsocketClient):
         if self.ticks:
             channels = []
             for symbol in self.ticks.keys():
-                channels.append(f"{symbol}@ticker")
-                channels.append(f"{symbol}@bookTicker")
+                contract: ContractData | None = self.gateway.get_contract_by_symbol(symbol)
+                if not contract:
+                    continue
+
+                name: str = contract.name.lower()
+                channels.append(f"{name}@ticker")
+                channels.append(f"{name}@bookTicker")
 
                 if self.kline_stream:
-                    channels.append(f"{symbol}@kline_1m")
+                    channels.append(f"{name}@kline_1m")
 
             packet: dict = {
                 "method": "SUBSCRIBE",
