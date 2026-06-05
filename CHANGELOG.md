@@ -1,3 +1,7 @@
+# 2026.06.05
+
+1. fix auto subscription bug when reconnected
+
 # 2026.05.03
 
 1. fix margin book ticker event time handling
