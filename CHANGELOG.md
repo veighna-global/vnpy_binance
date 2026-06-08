@@ -1,3 +1,7 @@
+# 2026.06.08
+
+1. fix TickData.datetime update sequence issue
+
 # 2026.06.05
 
 1. fix auto subscription bug when reconnected
