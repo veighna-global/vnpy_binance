@@ -1,3 +1,7 @@
+# 2026.06.19
+
+1. fix AccountData.frozen should not be 0
+
 # 2026.06.08
 
 1. fix TickData.datetime update sequence issue
