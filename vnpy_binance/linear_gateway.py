@@ -616,10 +616,13 @@ class RestApi(RestClient):
             request: Original request object
         """
         for asset in data["assets"]:
+            wallet_balance: float = float(asset["walletBalance"])
+            available_balance: float = float(asset["availableBalance"])
+
             account: AccountData = AccountData(
                 accountid=asset["asset"],
-                balance=float(asset["walletBalance"]),
-                frozen=float(asset["maintMargin"]),
+                balance=wallet_balance,
+                frozen=max(wallet_balance - available_balance, 0),
                 gateway_name=self.gateway_name
             )
 
