@@ -1,3 +1,7 @@
+# 2026.06.28
+
+1. fix open orders filtered out in linear and inverse gateways due to wrong contract lookup
+
 # 2026.06.19
 
 1. fix AccountData.frozen should not be 0

@@ -674,7 +674,7 @@ class RestApi(RestClient):
             if not order_type:
                 continue
 
-            contract: ContractData | None = self.gateway.get_contract_by_symbol(d["symbol"])
+            contract: ContractData | None = self.gateway.get_contract_by_name(d["symbol"])
             if not contract:
                 continue
 
