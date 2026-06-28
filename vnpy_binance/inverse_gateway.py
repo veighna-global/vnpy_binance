@@ -107,6 +107,9 @@ TIMEDELTA_MAP: dict[Interval, timedelta] = {
 # Set weboscket timeout to 24 hour
 WEBSOCKET_TIMEOUT = 24 * 60 * 60
 
+# Account query interval in seconds (EVENT_TIMER fires every 1s)
+ACCOUNT_QUERY_INTERVAL: int = 3
+
 
 class BinanceInverseGateway(BaseGateway):
     """
@@ -156,6 +159,8 @@ class BinanceInverseGateway(BaseGateway):
         self.orders: dict[str, OrderData] = {}
         self.symbol_contract_map: dict[str, ContractData] = {}
         self.name_contract_map: dict[str, ContractData] = {}
+
+        self.query_count: int = 0
 
     def connect(self, setting: dict) -> None:
         """
@@ -218,12 +223,8 @@ class BinanceInverseGateway(BaseGateway):
         self.trade_api.cancel_order(req)
 
     def query_account(self) -> None:
-        """
-        Query account balance.
-
-        Not required since Binance provides websocket updates for account balances.
-        """
-        pass
+        """Query account balance via REST."""
+        self.rest_api.query_account()
 
     def query_position(self) -> None:
         """
@@ -271,6 +272,16 @@ class BinanceInverseGateway(BaseGateway):
         self.rest_api.keep_user_stream()
 
         self.md_api.subscribe_new_channels()
+
+        if not self.rest_api.key:
+            return
+
+        self.query_count += 1
+        if self.query_count < ACCOUNT_QUERY_INTERVAL:
+            return
+        self.query_count = 0
+
+        self.rest_api.query_account()
 
     def on_order(self, order: OrderData) -> None:
         """
@@ -613,10 +624,13 @@ class RestApi(RestClient):
             request: Original request object
         """
         for asset in data["assets"]:
+            wallet_balance: float = float(asset["walletBalance"])
+            initial_margin: float = float(asset["initialMargin"])
+
             account: AccountData = AccountData(
                 accountid=asset["asset"],
-                balance=float(asset["walletBalance"]),
-                frozen=float(asset["maintMargin"]),
+                balance=wallet_balance,
+                frozen=initial_margin,
                 gateway_name=self.gateway_name
             )
 
@@ -995,25 +1009,13 @@ class UserApi(WebsocketClient):
 
     def on_account(self, packet: dict) -> None:
         """
-        Callback of account balance and holding position update.
+        Callback of holding position update from ACCOUNT_UPDATE event.
 
-        This function processes the account update event from the user data stream,
-        including balance changes and position updates.
+        Account balance is polled via REST instead of websocket push.
 
         Parameters:
             packet: JSON data received from websocket
         """
-        for acc_data in packet["a"]["B"]:
-            account: AccountData = AccountData(
-                accountid=acc_data["a"],
-                balance=float(acc_data["wb"]),
-                frozen=float(acc_data["wb"]) - float(acc_data["cw"]),
-                gateway_name=self.gateway_name
-            )
-
-            if account.balance:
-                self.gateway.on_account(account)
-
         for pos_data in packet["a"]["P"]:
             if pos_data["ps"] == "BOTH":
                 volume = pos_data["pa"]

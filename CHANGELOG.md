@@ -1,6 +1,7 @@
 # 2026.06.28
 
 1. fix open orders filtered out in linear and inverse gateways due to wrong contract lookup
+2. fix inverse gateway AccountData.frozen via REST polling with initialMargin; WS only pushes positions
 
 # 2026.06.19
 
